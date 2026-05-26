@@ -1,9 +1,16 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, field_validator
+import email_validator as _ev
 
 
 class LoginRequest(BaseModel):
-    email: EmailStr
+    email: str
     password: str
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, v: str) -> str:
+        info = _ev.validate_email(v, check_deliverability=False)
+        return info.normalized
 
 
 class RefreshRequest(BaseModel):
