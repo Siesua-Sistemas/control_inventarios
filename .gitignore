@@ -1,0 +1,29 @@
+ .env
+ .env.*
+ /.venv
+ venv/
+ env/
+ __pycache__/
+ *.py[cod]
+ *.pyo
+ *.pyd
+ *.log
+ .DS_Store
+ .vscode/
+ .idea/
+
+ # Node / Next
+ node_modules/
+ /frontend/node_modules/
+ /.next/
+ /out/
+
+ # Build
+ dist/
+ build/
+
+ # OS
+ Thumbs.db
+
+ # Sensitive
+ .history
