@@ -1,5 +1,8 @@
 FROM node:20-alpine
 
+ARG NEXT_PUBLIC_API_URL=http://localhost:8000
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+
 WORKDIR /app
 
 # Install dependencies first (cache-friendly)
