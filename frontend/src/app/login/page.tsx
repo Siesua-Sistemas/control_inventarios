@@ -9,14 +9,14 @@ import { isAuthenticated } from '@/lib/api';
 export default function LoginPage() {
   const router = useRouter();
   const { login } = useAuth();
-  const [email, setEmail] = useState('admin@inventario.local');
+  const [email, setEmail] = useState('sistemas@siesua.com');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (isAuthenticated()) {
-      router.replace('/users');
+      router.replace('/inicio');
     }
   }, [router]);
 
@@ -27,7 +27,7 @@ export default function LoginPage() {
 
     try {
       await login(email, password);
-      router.push('/users');
+      router.push('/equipos');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No fue posible iniciar sesión');
     } finally {

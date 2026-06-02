@@ -1,0 +1,67 @@
+from datetime import datetime
+
+from fastapi import HTTPException, status
+
+from app.models.bodega import Bodega
+from app.repositories.bodega_repository import BodegaRepository
+from app.schemas.bodega import BodegaCreate, BodegaOut, BodegaUpdate
+
+
+class BodegaService:
+    def __init__(self, repository: BodegaRepository):
+        self.repository = repository
+
+    def list_bodegas(self, sede: str | None) -> list[BodegaOut]:
+        bodegas = self.repository.list_bodegas(sede)
+        return [
+            BodegaOut(
+                **{k: getattr(b, k) for k in ('id', 'nombre', 'sede', 'responsable', 'descripcion', 'is_active', 'created_at')},
+                total_equipos=self.repository.count_equipos(b.id),
+            )
+            for b in bodegas
+        ]
+
+    def get_bodega(self, bodega_id: int) -> Bodega:
+        bodega = self.repository.get_by_id(bodega_id)
+        if not bodega:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Bodega no encontrada')
+        return bodega
+
+    def get_inventario(self, bodega_id: int) -> dict:
+        bodega = self.get_bodega(bodega_id)
+        equipos = self.repository.get_equipos(bodega_id)
+        por_tipo: dict[str, int] = {}
+        por_estado: dict[str, int] = {}
+        for e in equipos:
+            por_tipo[e.tipo] = por_tipo.get(e.tipo, 0) + 1
+            por_estado[e.estado] = por_estado.get(e.estado, 0) + 1
+        return {
+            'bodega': BodegaOut(
+                **{k: getattr(bodega, k) for k in ('id', 'nombre', 'sede', 'responsable', 'descripcion', 'is_active', 'created_at')},
+                total_equipos=len(equipos),
+            ),
+            'total': len(equipos),
+            'por_tipo': por_tipo,
+            'por_estado': por_estado,
+            'equipos': equipos,
+        }
+
+    def create_bodega(self, payload: BodegaCreate) -> Bodega:
+        bodega = Bodega(
+            nombre=payload.nombre.strip(),
+            sede=payload.sede.strip(),
+            responsable=payload.responsable.strip() if payload.responsable else None,
+            descripcion=payload.descripcion.strip() if payload.descripcion else None,
+        )
+        return self.repository.create(bodega)
+
+    def update_bodega(self, bodega_id: int, payload: BodegaUpdate) -> Bodega:
+        bodega = self.get_bodega(bodega_id)
+        for field, value in payload.model_dump(exclude_none=True).items():
+            setattr(bodega, field, value.strip() if isinstance(value, str) else value)
+        bodega.updated_at = datetime.utcnow()
+        return self.repository.update(bodega)
+
+    def delete_bodega(self, bodega_id: int) -> None:
+        bodega = self.get_bodega(bodega_id)
+        self.repository.soft_delete(bodega)

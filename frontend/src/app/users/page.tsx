@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
+import { NavBar } from '@/components/nav-bar';
 import { apiRequest, isAuthenticated } from '@/lib/api';
 
 interface UserRow {
@@ -41,7 +42,9 @@ export default function UsersPage() {
   }, [router]);
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-6xl flex-col px-4 py-10">
+    <>
+      <NavBar />
+      <main className="mx-auto flex min-h-screen max-w-6xl flex-col px-4 py-10">
       <div className="mb-6 flex items-center justify-between">
         <div>
           <p className="text-sm uppercase tracking-[0.3em] text-cyan-300">Usuarios</p>
@@ -91,5 +94,6 @@ export default function UsersPage() {
         </table>
       </div>
     </main>
+    </>
   );
 }

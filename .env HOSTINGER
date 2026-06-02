@@ -1,0 +1,12 @@
+DATABASE_URL=postgresql+psycopg2://postgres:postgres@postgres:5432/inventory
+SECRET_KEY=dev-secret-key-change-in-production
+REFRESH_SECRET_KEY=dev-refresh-secret-key-change-in-productiont-key-change-in-production
+ACCESS_TOKEN_EXPIRE_MINUTES=30
+REFRESH_TOKEN_EXPIRE_DAYS=7
+CORS_ORIGINS=http://187.77.13.196:3000
+SEED_ADMIN_EMAIL=sistemas@siesua.com
+SEED_ADMIN_PASSWORD=admin
+NEXT_PUBLIC_API_URL=http://187.77.13.196:8000
+POSTGRES_DB=inventory
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=postgres

@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
+import { NavBar } from '@/components/nav-bar';
 import { apiRequest, isAuthenticated } from '@/lib/api';
 
 interface RoleOption {
@@ -75,7 +76,9 @@ export default function CreateUserPage() {
   };
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-3xl flex-col px-4 py-10">
+    <>
+      <NavBar />
+      <main className="mx-auto flex min-h-screen max-w-3xl flex-col px-4 py-10">
       <div className="mb-6">
         <p className="text-sm uppercase tracking-[0.3em] text-cyan-300">Usuarios</p>
         <h1 className="mt-2 text-3xl font-bold">Crear usuario</h1>
@@ -135,5 +138,6 @@ export default function CreateUserPage() {
         </div>
       </form>
     </main>
+    </>
   );
 }
