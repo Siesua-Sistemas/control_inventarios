@@ -65,19 +65,20 @@ export default function NuevoEquipoPage() {
       <NavBar />
       <main className="mx-auto max-w-3xl px-4 py-8">
         <div className="mb-6">
-          <p className="text-sm uppercase tracking-[0.3em] text-cyan-300">Equipos</p>
+          <p className="text-sm uppercase tracking-[0.3em] text-cyan-700 dark:text-cyan-300">Equipos</p>
           <h1 className="mt-1 text-3xl font-bold">Nuevo equipo</h1>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-6 rounded-2xl border border-slate-800 bg-slate-900 p-6">
+        <form onSubmit={handleSubmit} className="space-y-6 rounded-2xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
           {/* Identificación */}
           <section>
-            <h2 className="mb-4 text-xs font-semibold uppercase tracking-widest text-cyan-400">Identificación</h2>
+            <h2 className="mb-4 text-xs font-semibold uppercase tracking-widest text-cyan-600 dark:text-cyan-400">Identificación</h2>
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <label htmlFor="serial">Serial *</label>
                 <input id="serial" value={form.serial} onChange={(e) => set('serial', e.target.value)} required />
               </div>
+             
               <div>
                 <label htmlFor="tipo">Tipo *</label>
                 <select id="tipo" value={form.tipo} onChange={(e) => set('tipo', e.target.value)} required>
@@ -102,7 +103,7 @@ export default function NuevoEquipoPage() {
 
           {/* Ubicación */}
           <section>
-            <h2 className="mb-4 text-xs font-semibold uppercase tracking-widest text-cyan-400">Ubicación</h2>
+            <h2 className="mb-4 text-xs font-semibold uppercase tracking-widest text-cyan-600 dark:text-cyan-400">Ubicación</h2>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="sm:col-span-2">
                 <label htmlFor="bodega">Bodega *</label>
@@ -120,7 +121,7 @@ export default function NuevoEquipoPage() {
               </div>
               {selectedBodega && (
                 <div className="sm:col-span-2">
-                  <p className="text-xs text-slate-500">Sede: <span className="text-slate-300">{selectedBodega.sede}</span></p>
+                  <p className="text-xs text-slate-500">Sede: <span className="text-slate-700 dark:text-slate-300">{selectedBodega.sede}</span></p>
                 </div>
               )}
               <div>
@@ -143,7 +144,7 @@ export default function NuevoEquipoPage() {
 
           {/* Información financiera */}
           <section>
-            <h2 className="mb-4 text-xs font-semibold uppercase tracking-widest text-cyan-400">Información financiera</h2>
+            <h2 className="mb-4 text-xs font-semibold uppercase tracking-widest text-cyan-600 dark:text-cyan-400">Información financiera</h2>
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <label htmlFor="fecha_compra">Fecha de compra</label>
@@ -176,15 +177,15 @@ export default function NuevoEquipoPage() {
               rows={3}
               value={form.observaciones ?? ''}
               onChange={(e) => set('observaciones', e.target.value)}
-              className="w-full rounded-md border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:border-cyan-400 focus:outline-none"
+              className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-cyan-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:focus:border-cyan-400"
             />
           </div>
 
-          {error && <p className="rounded-md bg-red-500/20 px-3 py-2 text-sm text-red-200">{error}</p>}
+          {error && <p className="rounded-md bg-red-100 px-3 py-2 text-sm text-red-700 dark:bg-red-500/20 dark:text-red-200">{error}</p>}
 
           <div className="flex gap-3">
-            <button type="submit" disabled={loading}>{loading ? 'Guardando...' : 'Crear equipo'}</button>
-            <button type="button" className="bg-slate-800 text-slate-100" onClick={() => router.push('/equipos')}>
+            <button type="submit" disabled={loading} className="bg-cyan-600 text-white hover:bg-cyan-700 dark:bg-cyan-500 dark:text-slate-950 dark:hover:bg-cyan-400">{loading ? 'Guardando...' : 'Crear equipo'}</button>
+            <button type="button" className="bg-slate-200 text-slate-800 hover:bg-slate-300 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700" onClick={() => router.push('/equipos')}>
               Cancelar
             </button>
           </div>

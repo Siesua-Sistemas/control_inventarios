@@ -442,7 +442,7 @@ Mostrar indicadores clave para la administración.
 - Checklist de entrega
 - Fotografías antes y después
 - Reserva de equipos
-- Control de licencias
+- Control de licencias Y CLAVES 
 - Escaneo masivo QR
 - Integración con personal y RRHH
 - Notificaciones automáticas por correo y WhatsApp
@@ -469,3 +469,76 @@ El sistema será exitoso si:
 ## 10. Resumen operativo
 
 El sistema debe convertirse en una plataforma interna de gestión completa, moderna y escalable, capaz de cubrir inventario, asignaciones, mantenimiento, trazabilidad, actas, reportes, auditoría, bodega, documentación y analítica gerencial, con un modelo de permisos sólido y una experiencia operativa rápida para usuarios de sede y administración.
+
+## 11. Registro de avances (Changelog)
+
+> Esta sección documenta lo que **ya está implementado** en el código (a diferencia de las secciones anteriores, que describen el alcance recomendado/objetivo). Se actualiza por sesión de trabajo para que cualquier sesión futura entienda el estado real del proyecto sin tener que leer todo el historial de git.
+
+### 2026-06-02 — Base del sistema de inventario (commit `273e2df`)
+
+- Modelos, repositorios, routers y schemas base para: Equipos, Empleados, Bodegas, Asignaciones, Actas de entrega, Mantenimientos.
+- Configuración de despliegue para VPS Hostinger (Docker, docker-compose, variables `NEXT_PUBLIC_API_URL`, devcontainer).
+- 
+
+### 2026-06-11 — Hojas de vida, periféricos y mejoras de Asignaciones (sesión actual, pendiente de commit/build)
+
+**Hoja de vida del equipo (`/equipos/[id]/hoja-de-vida`)**
+- Página nueva con 4 pestañas: **Ficha técnica**, **Periféricos**, **Fotos**, **Mantenimiento**.
+- Backend: nueva columna `equipment.specs` (JSON) para especificaciones dinámicas por tipo de equipo, renderizadas en la pestaña "Ficha técnica" según `specs_template` (campos texto/número/select/booleano/escala).
+- Backend: nueva columna `equipment.parent_equipment_id` (FK auto-referencial) para modelar relaciones equipo principal ↔ periféricos (ej. portátil ↔ mouse, cargador, monitor).
+- Endpoint `PATCH /api/v1/equipos/{id}/parent` (recibe `parent_id` como **query param**, no body).
+- Subida/borrado de fotos del equipo: `UploadFile` + montaje de `StaticFiles` en `/storage/equipment_photos`.
+- Pestaña **Periféricos**: permite vincular/desvincular equipos existentes como periféricos, y crear periféricos nuevos al vuelo con dos modales rápidos:
+  - **"+ Nuevo periférico"**: tipo (Accesorio/Monitor/Audífonos/Cámara/Red/Otro), serial, marca, modelo. Hereda sede/bodega/ubicación del equipo padre y queda en estado "En bodega".
+  - **"⚡ Nuevo cargador"**: solo pide marca y potencia (W); genera serial `CARG-<timestamp>`, modelo `Cargador {W}W` y guarda `specs.potencia_w`.
+- Pestaña **Mantenimiento**: CRUD completo (alta, edición, borrado) con formulario inline; nuevo router `mantenimientos` registrado en `main.py` con permisos `mantenimientos:read` / `mantenimientos:write`.
+
+**Cascada de periféricos en Asignaciones**
+- Al **entregar** un equipo, todos sus periféricos (`parent_equipment_id`) que estén en estado entregable (`Disponible`/`En bodega`) pasan automáticamente a `Asignado` con el mismo empleado, generando su propio registro de auditoría (`Asignacion` con observación "Periférico de {código}").
+- Al **devolver** un equipo, sus periféricos en estado devolvible se devuelven igual (mismo estado destino y bodega).
+- Antes de este cambio los periféricos quedaban "huérfanos" (seguían como Asignados a un empleado que ya no tenía el equipo).
+
+**Entrega múltiple ("carrito") en Asignaciones**
+- Nuevo endpoint `POST /api/v1/asignaciones/entregar-multiple` (`entregar_multiple` en el service, recorre `entregar()` por cada equipo para reutilizar toda la lógica/cascada existente).
+- Frontend: pestaña de entrega rediseñada como carrito — buscador de equipos (`equiposEntregables` = unión de `Disponible` + `En bodega`, antes solo se buscaba en `Disponible`, lo que rompía la búsqueda), selección de empleado/bodega/observaciones, y entrega de todos los ítems del carrito en una sola operación.
+- Tras entregar, redirige automáticamente a la vista previa del acta (`/asignaciones/acta?emp=...&eqs=...`).
+
+**Actas: vista previa e impresión**
+- Nueva página `/asignaciones/acta` (vista previa, no imprimible): agrupa el equipo principal y sus periféricos (con prefijo `└` y fondo distinto), datos del empleado, badges de estado.
+- Nueva página `/asignaciones/[equipment_id]/imprimir` (formato imprimible, fondo blanco): encabezado, datos del empleado, tabla de equipos (principal + periféricos aplanados), observaciones y líneas de firma. Usa `window.print()` para generar PDF.
+- Botones "Vista previa" e "🖨 Imprimir" agregados a la pestaña "Activas" de Asignaciones.
+- Paleta de colores de los botones de Asignaciones corregida (texto ilegible en blanco → `bg-blue-400 text-slate-950 font-semibold` para entrega, esmeralda para devolución, violeta para traslado).
+
+**Bug fixes de esta sesión**
+- `setEquipmentParent` daba 422: el backend espera `parent_id` como query param, no en el body — corregido en `frontend/src/lib/api.ts`.
+- "Devolución" seguía apareciendo en "Activas": `get_activas()` comparaba el estado histórico/inmutable de la `Asignacion` (`estado_despues == 'Asignado'`) en vez del estado **actual** del equipo. Corregido con un JOIN contra `Equipment.estado` (`Asignado`/`Prestado` + `is_active`).
+- Buscador de "Equipos a entregar" no mostraba resultados: solo se cargaban equipos en estado `Disponible`, pero `ESTADOS_ENTREGABLES` también incluye `En bodega`. Corregido cargando ambos estados.
+- Error de build `Cannot find name 'setEquiposDisp'`: referencia residual tras renombrar `equiposDisp` → `equiposEntregables`; eliminada.
+- `tsconfig.json`: eliminado `baseUrl: "."` (deprecado), se mantiene `paths` con `@/*`.
+- `EquipmentPayload` ahora incluye `specs` y `parent_equipment_id` en los formularios de "nuevo equipo" y "editar equipo".
+
+**Pendiente / por revisar en próxima sesión**
+- El botón "Iniciar Entrega →" agregado en `/asignaciones/acta/page.tsx` apunta a la ruta `/asignaciones/entrega?emp=...&eqs=...`, **que todavía no existe** — falta crearla o decidir si se reutiliza otra vista.
+- Reconstruir contenedores Docker (backend + frontend) para aplicar las migraciones de `specs`/`parent_equipment_id` y los cambios de `main.py`/StaticFiles en el entorno desplegado.
+- Falta hacer commit de todos los cambios de esta sesión (modelos, routers, frontend de hoja de vida, asignaciones, actas).
+
+### 2026-06-11 (cont.) — Inventario de bodegas completo, datos demo adicionales y tablas ordenables
+
+**Fix: inventario de bodega no mostraba todos los equipos de la sede**
+- `bodega_repository.py`: `count_equipos()` y `get_equipos()` ahora filtran por `Equipment.sede == bodega.sede` (en vez de `bodega_id`), ya que los equipos `Asignado`/`Prestado` tienen `bodega_id = NULL` y antes quedaban excluidos. Ahora el inventario de bodega refleja **todos** los elementos de la sede (en bodega + asignados a empleados).
+- Nuevo computed property `Equipment.empleado_nombre` (modelo `equipment.py`, schema `EquipmentOut`, tipo `EquipmentRow` en `frontend/src/lib/api.ts`) — nombre completo del empleado actualmente asignado, o `null`.
+- `/bodegas/[id]/inventario`: nueva columna **"Ubicación física"** (antes "Asignado a / Ubicación") — muestra `empleado_nombre` si el equipo está asignado, o "En bodega"/`ubicacion` en caso contrario.
+- Verificado end-to-end vía API (`entregar` → `devolver`): tras una entrega, la columna refleja inmediatamente al último empleado asignado (sin necesidad de cambios adicionales, la lógica ya propagaba `empleado_id` correctamente).
+
+**Datos demo adicionales (scripts idempotentes en `backend/app/scripts/`)**
+- `seed_home_office_accesorios.py`: agrega cargador + mouse a cada uno de los 6 portátiles de "HOME OFFICE", y monitor para cargos en `CARGOS_CON_MONITOR` (Contador/a, Desarrollador/a de Software, Gerente Administrativo). Total: 15 equipos + 15 asignaciones.
+- `seed_camaras_seguridad.py`: agrega cámaras CCTV (`tipo='Cámara'`, serial `CAM...`) — 3 para sedes de alto volumen (CENTRO MAYOR, UNICENTRO), 1 para el resto. Total: 11 equipos + 11 asignaciones.
+- Nueva bodega **"HOME OFFICE"** (id=10, sede="HOME OFFICE") creada manualmente vía SQL para agrupar el inventario de teletrabajo (23 equipos).
+
+**UI: lightbox de fotos y tablas ordenables**
+- `EquipoModal`: la foto del equipo ahora es clickeable (`cursor-zoom-in`) y abre un lightbox a pantalla completa; Escape cierra primero el lightbox y luego el modal.
+- `/bodegas/[id]/inventario/acta`: el código de cada equipo ahora abre `EquipoModal` al hacer clic.
+- Encabezados de columna ordenables (▲/▼/⇅, clic para alternar asc/desc) agregados a:
+  - `/bodegas/[id]/inventario` — Código, Serial, Tipo, Marca/Modelo, Ubicación física, Estado.
+  - `/equipos` — Código, Serial, Tipo, Marca/Modelo, Sede, Estado.
+  - `/historial` — ambas pestañas: **Movimientos** (Fecha, Tipo, Equipo, Empleado/Destino, Estado, Registrado por) y **Actas firmadas** (Fecha, Tipo, Sede, Entrega, Recibe, Dispositivos, Firmas), usando helpers compartidos `compareValues()` y `SortableTh()` definidos en `historial/page.tsx`.

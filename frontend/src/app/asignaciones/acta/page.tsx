@@ -70,8 +70,8 @@ function ActaContent() {
         <NavBar />
         <main className="flex min-h-screen items-center justify-center">
           <div className="text-center">
-            <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-2 border-slate-700 border-t-indigo-400" />
-            <p className="text-slate-400">Generando acta...</p>
+            <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-2 border-slate-300 border-t-indigo-500 dark:border-slate-700 dark:border-t-indigo-400" />
+            <p className="text-slate-600 dark:text-slate-400">Generando acta...</p>
           </div>
         </main>
       </>
@@ -83,8 +83,8 @@ function ActaContent() {
       <>
         <NavBar />
         <main className="flex min-h-screen flex-col items-center justify-center gap-4">
-          <p className="rounded-md bg-red-500/20 px-4 py-2 text-sm text-red-300">{error || 'Sin datos'}</p>
-          <Link href="/asignaciones" className="text-indigo-400 hover:underline">← Volver a asignaciones</Link>
+          <p className="rounded-md bg-red-100 px-4 py-2 text-sm text-red-700 dark:bg-red-500/20 dark:text-red-300">{error || 'Sin datos'}</p>
+          <Link href="/asignaciones" className="text-indigo-600 dark:text-indigo-400 hover:underline">← Volver a asignaciones</Link>
         </main>
       </>
     );
@@ -133,11 +133,11 @@ function ActaContent() {
         {/* Top bar */}
         <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
           <div>
-            <Link href="/asignaciones" className="text-xs text-slate-500 hover:text-slate-300 transition-colors">
+            <Link href="/asignaciones" className="text-xs text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-colors">
               ← Asignaciones
             </Link>
             <h1 className="mt-1 text-2xl font-bold">Acta de Entrega</h1>
-            <p className="text-sm text-slate-400">Emitida el {today}</p>
+            <p className="text-sm text-slate-600 dark:text-slate-400">Emitida el {today}</p>
           </div>
           <div className="flex gap-2">
             <Link
@@ -148,7 +148,7 @@ function ActaContent() {
             </Link>
             <Link
               href={`/asignaciones/${eqIds[0]}/imprimir`}
-              className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800 px-4 py-2 text-sm text-slate-200 hover:bg-slate-700 transition-colors"
+              className="flex items-center gap-2 rounded-lg border border-slate-300 bg-slate-100 px-4 py-2 text-sm text-slate-800 hover:bg-slate-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 transition-colors"
             >
               🖨 Imprimir
             </Link>
@@ -156,17 +156,17 @@ function ActaContent() {
         </div>
 
         {/* Main card */}
-        <div className="rounded-2xl border border-slate-700 overflow-hidden shadow-xl">
+        <div className="rounded-2xl border border-slate-300 dark:border-slate-700 overflow-hidden shadow-xl">
 
           {/* Header */}
-          <div className="bg-gradient-to-r from-indigo-950 to-slate-900 border-b border-indigo-900/50 px-8 py-6">
+          <div className="bg-gradient-to-r from-indigo-50 to-white border-b border-indigo-200 dark:from-indigo-950 dark:to-slate-900 dark:border-indigo-900/50 px-8 py-6">
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-indigo-400">Acta de entrega de equipos</p>
-                <h2 className="mt-2 text-xl font-bold text-white capitalize">{fecha}</h2>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-indigo-600 dark:text-indigo-400">Acta de entrega de equipos</p>
+                <h2 className="mt-2 text-xl font-bold text-slate-900 dark:text-white capitalize">{fecha}</h2>
               </div>
               <div className="text-right">
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-500/20 border border-indigo-500/30 px-3 py-1 text-xs font-semibold text-indigo-300">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-100 border border-indigo-300 px-3 py-1 text-xs font-semibold text-indigo-700 dark:bg-indigo-500/20 dark:border-indigo-500/30 dark:text-indigo-300">
                   {allItems.length} {allItems.length === 1 ? 'ítem' : 'ítems'}
                 </span>
               </div>
@@ -174,33 +174,33 @@ function ActaContent() {
           </div>
 
           {/* Employee */}
-          <div className="bg-slate-800/50 border-b border-slate-700 px-8 py-5">
-            <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-slate-400">
+          <div className="bg-slate-100 border-b border-slate-200 dark:bg-slate-800/50 dark:border-slate-700 px-8 py-5">
+            <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-slate-600 dark:text-slate-400">
               Responsable del equipo
             </p>
             <div className="flex flex-wrap gap-8">
               <div>
                 <p className="text-xs text-slate-500 mb-0.5">Nombre completo</p>
-                <p className="text-lg font-bold text-white">{empleadoNombre}</p>
+                <p className="text-lg font-bold text-slate-900 dark:text-white">{empleadoNombre}</p>
               </div>
               <div>
                 <p className="text-xs text-slate-500 mb-0.5">Cédula de ciudadanía</p>
-                <p className="text-lg font-bold text-white">{empleadoCedula}</p>
+                <p className="text-lg font-bold text-slate-900 dark:text-white">{empleadoCedula}</p>
               </div>
               <div>
                 <p className="text-xs text-slate-500 mb-0.5">Sede</p>
-                <p className="text-base font-semibold text-slate-200">{entries[0].profile.equipment.sede}</p>
+                <p className="text-base font-semibold text-slate-800 dark:text-slate-200">{entries[0].profile.equipment.sede}</p>
               </div>
             </div>
             {firstA.observaciones && (
-              <p className="mt-3 text-sm text-amber-200/60 italic">"{firstA.observaciones}"</p>
+              <p className="mt-3 text-sm text-amber-700 dark:text-amber-200/60 italic">"{firstA.observaciones}"</p>
             )}
           </div>
 
           {/* Equipment table */}
-          <div className="bg-slate-900 px-8 py-6">
+          <div className="bg-white dark:bg-slate-900 px-8 py-6">
             <div className="mb-4 flex items-center gap-3">
-              <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">Equipos entregados</p>
+              <p className="text-xs font-semibold uppercase tracking-widest text-slate-600 dark:text-slate-400">Equipos entregados</p>
               {peripheralCount > 0 && (
                 <span className="text-xs text-slate-500">
                   {primaryCount} principal{primaryCount !== 1 ? 'es' : ''} + {peripheralCount} periférico{peripheralCount !== 1 ? 's' : ''}
@@ -214,37 +214,37 @@ function ActaContent() {
                   key={i}
                   className={`flex items-center gap-4 rounded-xl px-4 py-3 transition-colors ${
                     item.isPrimary
-                      ? 'bg-slate-800 border border-slate-700'
-                      : 'bg-slate-800/40 border border-slate-800 ml-6'
+                      ? 'bg-slate-100 border border-slate-200 dark:bg-slate-800 dark:border-slate-700'
+                      : 'bg-slate-50 border border-slate-200 dark:bg-slate-800/40 dark:border-slate-800 ml-6'
                   }`}
                 >
                   {!item.isPrimary && (
-                    <span className="text-slate-600 text-xs">└</span>
+                    <span className="text-slate-500 dark:text-slate-600 text-xs">└</span>
                   )}
                   <div className="grid flex-1 grid-cols-4 gap-3 items-center min-w-0">
                     <div className="min-w-0">
                       <p className="text-xs text-slate-500 mb-0.5">Código</p>
-                      <p className={`font-mono text-sm font-bold truncate ${item.isPrimary ? 'text-cyan-400' : 'text-slate-400'}`}>
+                      <p className={`font-mono text-sm font-bold truncate ${item.isPrimary ? 'text-cyan-600 dark:text-cyan-400' : 'text-slate-600 dark:text-slate-400'}`}>
                         {item.codigo}
                       </p>
                     </div>
                     <div className="min-w-0">
                       <p className="text-xs text-slate-500 mb-0.5">Tipo</p>
-                      <p className="text-sm text-slate-300 truncate">{item.tipo}</p>
+                      <p className="text-sm text-slate-700 dark:text-slate-300 truncate">{item.tipo}</p>
                     </div>
                     <div className="min-w-0">
                       <p className="text-xs text-slate-500 mb-0.5">Marca / Modelo</p>
-                      <p className="text-sm font-semibold text-white truncate">{item.marca} {item.modelo}</p>
+                      <p className="text-sm font-semibold text-slate-900 dark:text-white truncate">{item.marca} {item.modelo}</p>
                     </div>
                     <div className="min-w-0">
                       <p className="text-xs text-slate-500 mb-0.5">Serial</p>
-                      <p className="font-mono text-xs text-slate-400 truncate">{item.serial}</p>
+                      <p className="font-mono text-xs text-slate-600 dark:text-slate-400 truncate">{item.serial}</p>
                     </div>
                   </div>
                   <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold ${
                     item.isPrimary
-                      ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30'
-                      : 'bg-slate-700 text-slate-400'
+                      ? 'bg-indigo-100 text-indigo-700 border border-indigo-300 dark:bg-indigo-500/20 dark:text-indigo-300 dark:border-indigo-500/30'
+                      : 'bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-400'
                   }`}>
                     {item.isPrimary ? 'Principal' : 'Periférico'}
                   </span>
@@ -254,11 +254,11 @@ function ActaContent() {
           </div>
 
           {/* Footer */}
-          <div className="bg-slate-950 border-t border-slate-800 px-8 py-4 flex items-center justify-between">
+          <div className="bg-slate-100 border-t border-slate-200 dark:bg-slate-950 dark:border-slate-800 px-8 py-4 flex items-center justify-between">
             <p className="text-xs text-slate-500">
-              Registrado por: <span className="font-medium text-slate-300">{firstA.created_by_nombre}</span>
+              Registrado por: <span className="font-medium text-slate-700 dark:text-slate-300">{firstA.created_by_nombre}</span>
             </p>
-            <p className="text-xs text-slate-600">
+            <p className="text-xs text-slate-500 dark:text-slate-600">
               Acta #{firstA.id} · {new Date(firstA.fecha).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}
             </p>
           </div>
@@ -270,16 +270,16 @@ function ActaContent() {
             { label: 'Quien entrega', name: firstA.created_by_nombre, icon: '✍' },
             { label: 'Quien recibe', name: empleadoNombre, icon: '✍' },
           ].map(({ label, name, icon }) => (
-            <div key={label} className="rounded-xl border border-dashed border-slate-700 bg-slate-900/50 px-6 py-8 text-center">
-              <div className="mx-auto mb-4 h-14 w-full max-w-[160px] border-b border-slate-600" />
+            <div key={label} className="rounded-xl border border-dashed border-slate-300 bg-slate-50 dark:border-slate-700 dark:bg-slate-900/50 px-6 py-8 text-center">
+              <div className="mx-auto mb-4 h-14 w-full max-w-[160px] border-b border-slate-300 dark:border-slate-600" />
               <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">{icon} {label}</p>
-              <p className="mt-1.5 text-sm font-medium text-slate-200">{name}</p>
+              <p className="mt-1.5 text-sm font-medium text-slate-800 dark:text-slate-200">{name}</p>
             </div>
           ))}
         </div>
 
         {/* Disclaimer */}
-        <p className="mt-6 text-center text-xs text-slate-600">
+        <p className="mt-6 text-center text-xs text-slate-500 dark:text-slate-600">
           Este documento es un registro digital del acta de entrega. Para la versión física, use la opción "Imprimir / PDF".
         </p>
 
@@ -293,7 +293,7 @@ export default function ActaPage() {
     <Suspense fallback={
       <><NavBar />
         <main className="flex min-h-screen items-center justify-center">
-          <p className="text-slate-400">Cargando...</p>
+          <p className="text-slate-600 dark:text-slate-400">Cargando...</p>
         </main>
       </>
     }>

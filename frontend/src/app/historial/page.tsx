@@ -17,10 +17,47 @@ import {
 // ─── Pestaña: Movimientos ─────────────────────────────────────────────────────
 
 const TIPO_BADGE: Record<string, string> = {
-  'Entrega': 'bg-blue-500/20 text-blue-300 border-blue-500/30',
-  'Devolución': 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
-  'Traslado': 'bg-purple-500/20 text-purple-300 border-purple-500/30',
+  'Entrega': 'bg-blue-100 text-blue-700 border-blue-300 dark:bg-blue-500/20 dark:text-blue-300 dark:border-blue-500/30',
+  'Devolución': 'bg-emerald-100 text-emerald-700 border-emerald-300 dark:bg-emerald-500/20 dark:text-emerald-300 dark:border-emerald-500/30',
+  'Traslado': 'bg-purple-100 text-purple-700 border-purple-300 dark:bg-purple-500/20 dark:text-purple-300 dark:border-purple-500/30',
 };
+
+// ─── Helper genérico de ordenamiento ───────────────────────────────────────
+
+function compareValues(a: string | number, b: string | number): number {
+  if (typeof a === 'number' && typeof b === 'number') return a - b;
+  return String(a).localeCompare(String(b), 'es', { sensitivity: 'base' });
+}
+
+function SortableTh<T extends string>(props: {
+  field: T; label: string; sortField: T; sortDir: 'asc' | 'desc';
+  onSort: (field: T) => void; className?: string;
+}) {
+  const { field, label, sortField, sortDir, onSort, className = '' } = props;
+  return (
+    <th className={`px-4 py-3 ${className}`}>
+      <button onClick={() => onSort(field)} className="flex items-center gap-1 hover:text-slate-900 dark:hover:text-slate-200 transition-colors">
+        {label}
+        <span className={sortField === field ? 'text-cyan-600 dark:text-cyan-400' : 'text-slate-400 dark:text-slate-600'}>
+          {sortField === field ? (sortDir === 'asc' ? '▲' : '▼') : '⇅'}
+        </span>
+      </button>
+    </th>
+  );
+}
+
+type MovSortField = 'fecha' | 'tipo' | 'equipo' | 'destino' | 'estado' | 'registrado';
+
+function movSortValue(m: AsignacionRow, field: MovSortField): string | number {
+  switch (field) {
+    case 'fecha': return m.fecha;
+    case 'tipo': return m.tipo;
+    case 'equipo': return `${m.equipment_codigo} ${m.equipment_marca} ${m.equipment_modelo}`;
+    case 'destino': return m.empleado_nombre ?? m.bodega_destino_nombre ?? '';
+    case 'estado': return m.estado_despues;
+    case 'registrado': return m.created_by_nombre;
+  }
+}
 
 function MovimientosTab() {
   const [items, setItems] = useState<AsignacionRow[]>([]);
@@ -31,7 +68,18 @@ function MovimientosTab() {
   const [filterTipo, setFilterTipo] = useState('');
   const [filterDesde, setFilterDesde] = useState('');
   const [filterHasta, setFilterHasta] = useState('');
+  const [sortField, setSortField] = useState<MovSortField>('fecha');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const PAGE_SIZE = 50;
+
+  const toggleSort = (field: MovSortField) => {
+    if (sortField === field) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortField(field);
+      setSortDir('asc');
+    }
+  };
 
   const load = async (tipo = filterTipo, desde = filterDesde, hasta = filterHasta, p = page) => {
     setLoading(true);
@@ -53,11 +101,11 @@ function MovimientosTab() {
       {modalEquipoId && <EquipoModal equipoId={modalEquipoId} onClose={() => setModalEquipoId(null)} />}
 
       {/* Filtros */}
-      <form onSubmit={handleFilter} className="mb-5 flex flex-wrap items-end gap-3 rounded-xl border border-slate-800 bg-slate-900/60 px-4 py-3">
+      <form onSubmit={handleFilter} className="mb-5 flex flex-wrap items-end gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-900/60">
         <div className="flex flex-col gap-1">
           <label className="text-xs text-slate-500">Tipo</label>
           <select value={filterTipo} onChange={(e) => setFilterTipo(e.target.value)}
-            className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white focus:border-indigo-500 focus:outline-none">
+            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-indigo-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white">
             <option value="">Todos</option>
             <option>Entrega</option>
             <option>Devolución</option>
@@ -67,12 +115,12 @@ function MovimientosTab() {
         <div className="flex flex-col gap-1">
           <label className="text-xs text-slate-500">Desde</label>
           <input type="date" value={filterDesde} onChange={(e) => setFilterDesde(e.target.value)}
-            className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white focus:border-indigo-500 focus:outline-none" />
+            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-indigo-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
         </div>
         <div className="flex flex-col gap-1">
           <label className="text-xs text-slate-500">Hasta</label>
           <input type="date" value={filterHasta} onChange={(e) => setFilterHasta(e.target.value)}
-            className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white focus:border-indigo-500 focus:outline-none" />
+            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-indigo-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
         </div>
         <button type="submit"
           className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 transition-colors">
@@ -80,65 +128,68 @@ function MovimientosTab() {
         </button>
         {(filterTipo || filterDesde || filterHasta) && (
           <button type="button" onClick={clearFilters}
-            className="rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-400 hover:text-slate-200 transition-colors">
+            className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-600 hover:text-slate-900 dark:border-slate-700 dark:text-slate-400 dark:hover:text-slate-200 transition-colors">
             Limpiar
           </button>
         )}
       </form>
 
       {/* Tabla */}
-      <div className="overflow-x-auto rounded-2xl border border-slate-800 bg-slate-900">
+      <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
         <table className="min-w-full text-left text-sm">
-          <thead className="bg-slate-950 text-xs uppercase tracking-wider text-slate-400">
+          <thead className="bg-slate-100 dark:bg-slate-950 text-xs uppercase tracking-wider text-slate-600 dark:text-slate-400">
             <tr>
-              <th className="px-4 py-3">Fecha</th>
-              <th className="px-4 py-3">Tipo</th>
-              <th className="px-4 py-3">Equipo</th>
-              <th className="px-4 py-3">Empleado / Destino</th>
-              <th className="px-4 py-3">Estado</th>
-              <th className="px-4 py-3">Registrado por</th>
+              <SortableTh field="fecha" label="Fecha" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
+              <SortableTh field="tipo" label="Tipo" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
+              <SortableTh field="equipo" label="Equipo" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
+              <SortableTh field="destino" label="Empleado / Destino" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
+              <SortableTh field="estado" label="Estado" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
+              <SortableTh field="registrado" label="Registrado por" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr><td colSpan={6} className="py-12 text-center text-slate-500">
-                <div className="mx-auto h-6 w-6 animate-spin rounded-full border-2 border-slate-700 border-t-indigo-400" />
+                <div className="mx-auto h-6 w-6 animate-spin rounded-full border-2 border-slate-300 border-t-indigo-500 dark:border-slate-700 dark:border-t-indigo-400" />
               </td></tr>
             ) : items.length === 0 ? (
               <tr><td colSpan={6} className="py-12 text-center text-slate-500">Sin movimientos.</td></tr>
-            ) : items.map((m) => (
-              <tr key={m.id} className="border-t border-slate-800 hover:bg-slate-800/30 transition-colors">
-                <td className="px-4 py-3 text-xs text-slate-400 whitespace-nowrap">
+            ) : [...items].sort((a, b) => {
+                const cmp = compareValues(movSortValue(a, sortField), movSortValue(b, sortField));
+                return sortDir === 'asc' ? cmp : -cmp;
+              }).map((m) => (
+              <tr key={m.id} className="border-t border-slate-200 hover:bg-slate-100 dark:border-slate-800 dark:hover:bg-slate-800/30 transition-colors">
+                <td className="px-4 py-3 text-xs text-slate-600 dark:text-slate-400 whitespace-nowrap">
                   {new Date(m.fecha).toLocaleString('es-CO', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
                 </td>
                 <td className="px-4 py-3">
-                  <span className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${TIPO_BADGE[m.tipo] ?? 'bg-slate-700 text-slate-300 border-slate-600'}`}>
+                  <span className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${TIPO_BADGE[m.tipo] ?? 'bg-slate-200 text-slate-700 border-slate-300 dark:bg-slate-700 dark:text-slate-300 dark:border-slate-600'}`}>
                     {m.tipo}
                   </span>
                 </td>
                 <td className="px-4 py-3">
                   <button
                     onClick={() => setModalEquipoId(m.equipment_id)}
-                    className="font-mono text-xs font-bold text-cyan-400 hover:text-cyan-300 hover:underline text-left"
+                    className="font-mono text-xs font-bold text-cyan-600 hover:text-cyan-700 dark:text-cyan-400 dark:hover:text-cyan-300 hover:underline text-left"
                   >
                     {m.equipment_codigo}
                   </button>
-                  <p className="text-sm text-slate-300">{m.equipment_marca} {m.equipment_modelo}</p>
+                  <p className="text-sm text-slate-700 dark:text-slate-300">{m.equipment_marca} {m.equipment_modelo}</p>
                   <p className="text-xs text-slate-500">{m.equipment_tipo}</p>
                 </td>
                 <td className="px-4 py-3 text-sm">
                   {m.empleado_nombre ? (
                     <>
-                      <p className="text-slate-300">{m.empleado_nombre}</p>
+                      <p className="text-slate-700 dark:text-slate-300">{m.empleado_nombre}</p>
                       {m.empleado_cedula && <p className="text-xs text-slate-500">{m.empleado_cedula}</p>}
                     </>
                   ) : m.bodega_destino_nombre ? (
-                    <p className="text-slate-400">{m.bodega_destino_nombre}</p>
-                  ) : <span className="text-slate-600">—</span>}
+                    <p className="text-slate-600 dark:text-slate-400">{m.bodega_destino_nombre}</p>
+                  ) : <span className="text-slate-500 dark:text-slate-600">—</span>}
                 </td>
-                <td className="px-4 py-3 text-xs text-slate-400">
-                  {m.estado_antes && <span className="text-slate-600">{m.estado_antes} → </span>}
-                  <span className="text-slate-300">{m.estado_despues}</span>
+                <td className="px-4 py-3 text-xs text-slate-600 dark:text-slate-400">
+                  {m.estado_antes && <span className="text-slate-500 dark:text-slate-600">{m.estado_antes} → </span>}
+                  <span className="text-slate-700 dark:text-slate-300">{m.estado_despues}</span>
                 </td>
                 <td className="px-4 py-3 text-xs text-slate-500">{m.created_by_nombre}</td>
               </tr>
@@ -154,12 +205,12 @@ function MovimientosTab() {
           {total > PAGE_SIZE && (
             <div className="flex items-center gap-2">
               <button onClick={() => goPage(page - 1)} disabled={page === 0}
-                className="rounded-lg border border-slate-700 px-3 py-1.5 disabled:opacity-40 hover:bg-slate-800 transition-colors">
+                className="rounded-lg border border-slate-300 px-3 py-1.5 disabled:opacity-40 hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800 transition-colors">
                 ← Anterior
               </button>
               <span>Página {page + 1} de {Math.ceil(total / PAGE_SIZE)}</span>
               <button onClick={() => goPage(page + 1)} disabled={(page + 1) * PAGE_SIZE >= total}
-                className="rounded-lg border border-slate-700 px-3 py-1.5 disabled:opacity-40 hover:bg-slate-800 transition-colors">
+                className="rounded-lg border border-slate-300 px-3 py-1.5 disabled:opacity-40 hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800 transition-colors">
                 Siguiente →
               </button>
             </div>
@@ -173,10 +224,24 @@ function MovimientosTab() {
 // ─── Pestaña: Actas firmadas ──────────────────────────────────────────────────
 
 const ACTA_TIPO_STYLE: Record<string, string> = {
-  bodega: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30',
-  asignacion: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30',
+  bodega: 'bg-indigo-100 text-indigo-700 border-indigo-300 dark:bg-indigo-500/20 dark:text-indigo-300 dark:border-indigo-500/30',
+  asignacion: 'bg-cyan-100 text-cyan-700 border-cyan-300 dark:bg-cyan-500/20 dark:text-cyan-300 dark:border-cyan-500/30',
 };
 const ACTA_TIPO_LABEL: Record<string, string> = { bodega: 'Bodega', asignacion: 'Asignación' };
+
+type ActaSortField = 'fecha' | 'tipo' | 'sede' | 'entrega' | 'recibe' | 'dispositivos' | 'firmas';
+
+function actaSortValue(acta: ActaEntregaRow, field: ActaSortField): string | number {
+  switch (field) {
+    case 'fecha': return acta.fecha;
+    case 'tipo': return ACTA_TIPO_LABEL[acta.tipo] ?? acta.tipo;
+    case 'sede': return `${acta.titulo} ${acta.sede}`;
+    case 'entrega': return acta.entrega_nombre;
+    case 'recibe': return acta.recibe_nombre;
+    case 'dispositivos': return acta.total_equipos;
+    case 'firmas': return acta.firma_entrega && acta.firma_recibe ? 2 : acta.firma_entrega || acta.firma_recibe ? 1 : 0;
+  }
+}
 
 function ActasTab() {
   const [actas, setActas] = useState<ActaEntregaRow[]>([]);
@@ -186,6 +251,17 @@ function ActasTab() {
   const [sede, setSede] = useState('');
   const [desde, setDesde] = useState('');
   const [hasta, setHasta] = useState('');
+  const [sortField, setSortField] = useState<ActaSortField>('fecha');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+
+  const toggleSort = (field: ActaSortField) => {
+    if (sortField === field) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortField(field);
+      setSortDir('asc');
+    }
+  };
 
   const load = async (t = tipo, s = sede, d = desde, h = hasta) => {
     setLoading(true);
@@ -203,11 +279,11 @@ function ActasTab() {
   return (
     <div>
       {/* Filtros */}
-      <form onSubmit={handleFilter} className="mb-5 flex flex-wrap items-end gap-3 rounded-xl border border-slate-800 bg-slate-900/60 px-4 py-3">
+      <form onSubmit={handleFilter} className="mb-5 flex flex-wrap items-end gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-900/60">
         <div className="flex flex-col gap-1">
           <label className="text-xs text-slate-500">Tipo</label>
           <select value={tipo} onChange={(e) => setTipo(e.target.value)}
-            className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white focus:border-indigo-500 focus:outline-none">
+            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-indigo-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white">
             <option value="">Todos</option>
             <option value="bodega">Sedes</option>
             <option value="asignacion">Asignación</option>
@@ -216,17 +292,17 @@ function ActasTab() {
         <div className="flex flex-col gap-1">
           <label className="text-xs text-slate-500">Sede</label>
           <input value={sede} onChange={(e) => setSede(e.target.value)} placeholder="Filtrar sede"
-            className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white placeholder-slate-600 focus:border-indigo-500 focus:outline-none" />
+            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:border-indigo-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:placeholder-slate-600" />
         </div>
         <div className="flex flex-col gap-1">
           <label className="text-xs text-slate-500">Desde</label>
           <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)}
-            className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white focus:border-indigo-500 focus:outline-none" />
+            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-indigo-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
         </div>
         <div className="flex flex-col gap-1">
           <label className="text-xs text-slate-500">Hasta</label>
           <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)}
-            className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white focus:border-indigo-500 focus:outline-none" />
+            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-indigo-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
         </div>
         <button type="submit"
           className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 transition-colors">
@@ -234,7 +310,7 @@ function ActasTab() {
         </button>
         {(tipo || sede || desde || hasta) && (
           <button type="button" onClick={clearFilters}
-            className="rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-400 hover:text-slate-200 transition-colors">
+            className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-600 hover:text-slate-900 dark:border-slate-700 dark:text-slate-400 dark:hover:text-slate-200 transition-colors">
             Limpiar
           </button>
         )}
@@ -243,61 +319,64 @@ function ActasTab() {
       {/* Tabla */}
       {loading ? (
         <div className="flex justify-center py-16">
-          <div className="h-7 w-7 animate-spin rounded-full border-2 border-slate-700 border-t-indigo-400" />
+          <div className="h-7 w-7 animate-spin rounded-full border-2 border-slate-300 border-t-indigo-500 dark:border-slate-700 dark:border-t-indigo-400" />
         </div>
       ) : actas.length === 0 ? (
-        <div className="rounded-2xl border border-slate-800 bg-slate-900 py-16 text-center">
+        <div className="rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 py-16 text-center">
           <p className="text-slate-500">No hay actas de entrega registradas.</p>
-          <p className="mt-1 text-xs text-slate-600">Las actas se generan al completar el flujo de entrega con firma.</p>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-600">Las actas se generan al completar el flujo de entrega con firma.</p>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-2xl border border-slate-800 bg-slate-900">
+        <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
           <table className="min-w-full text-left text-sm">
-            <thead className="bg-slate-950 text-xs uppercase tracking-wider text-slate-400">
+            <thead className="bg-slate-100 dark:bg-slate-950 text-xs uppercase tracking-wider text-slate-600 dark:text-slate-400">
               <tr>
-                <th className="px-4 py-3">Fecha</th>
-                <th className="px-4 py-3">Tipo</th>
-                <th className="px-4 py-3">Sede</th>
-                <th className="px-4 py-3">Entrega</th>
-                <th className="px-4 py-3">Recibe</th>
-                <th className="px-4 py-3 text-center">Dispositivos</th>
-                <th className="px-4 py-3 text-center">Firmas</th>
+                <SortableTh field="fecha" label="Fecha" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
+                <SortableTh field="tipo" label="Tipo" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
+                <SortableTh field="sede" label="Sede" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
+                <SortableTh field="entrega" label="Entrega" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
+                <SortableTh field="recibe" label="Recibe" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
+                <SortableTh field="dispositivos" label="Dispositivos" sortField={sortField} sortDir={sortDir} onSort={toggleSort} className="text-center" />
+                <SortableTh field="firmas" label="Firmas" sortField={sortField} sortDir={sortDir} onSort={toggleSort} className="text-center" />
                 <th className="px-4 py-3"></th>
               </tr>
             </thead>
             <tbody>
-              {actas.map((acta) => (
-                <tr key={acta.id} className="border-t border-slate-800 hover:bg-slate-800/30 transition-colors">
-                  <td className="px-4 py-3 text-xs text-slate-400 whitespace-nowrap">
+              {[...actas].sort((a, b) => {
+                const cmp = compareValues(actaSortValue(a, sortField), actaSortValue(b, sortField));
+                return sortDir === 'asc' ? cmp : -cmp;
+              }).map((acta) => (
+                <tr key={acta.id} className="border-t border-slate-200 hover:bg-slate-100 dark:border-slate-800 dark:hover:bg-slate-800/30 transition-colors">
+                  <td className="px-4 py-3 text-xs text-slate-600 dark:text-slate-400 whitespace-nowrap">
                     {new Date(acta.fecha).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}
                   </td>
                   <td className="px-4 py-3">
-                    <span className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${ACTA_TIPO_STYLE[acta.tipo] ?? 'bg-slate-700 text-slate-300 border-slate-600'}`}>
+                    <span className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${ACTA_TIPO_STYLE[acta.tipo] ?? 'bg-slate-200 text-slate-700 border-slate-300 dark:bg-slate-700 dark:text-slate-300 dark:border-slate-600'}`}>
                       {ACTA_TIPO_LABEL[acta.tipo] ?? acta.tipo}
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    <p className="font-medium text-slate-200">{acta.titulo}</p>
+                    <p className="font-medium text-slate-800 dark:text-slate-200">{acta.titulo}</p>
                     <p className="text-xs text-slate-500">{acta.sede}</p>
                   </td>
-                  <td className="px-4 py-3 text-sm text-slate-300">{acta.entrega_nombre}</td>
-                  <td className="px-4 py-3 text-sm text-slate-300">{acta.recibe_nombre}</td>
+                  <td className="px-4 py-3 text-sm text-slate-700 dark:text-slate-300">{acta.entrega_nombre}</td>
+                  <td className="px-4 py-3 text-sm text-slate-700 dark:text-slate-300">{acta.recibe_nombre}</td>
                   <td className="px-4 py-3 text-center">
-                    <span className="rounded-full bg-slate-800 px-2.5 py-0.5 text-xs text-slate-300">
+                    <span className="rounded-full bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300 px-2.5 py-0.5 text-xs">
                       {acta.total_equipos}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-center">
                     {acta.firma_entrega && acta.firma_recibe
-                      ? <span className="text-xs font-semibold text-emerald-400">✓ Completas</span>
+                      ? <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">✓ Completas</span>
                       : acta.firma_entrega || acta.firma_recibe
-                      ? <span className="text-xs text-yellow-400">Parcial</span>
-                      : <span className="text-xs text-slate-600">Sin firma</span>}
+                      ? <span className="text-xs text-yellow-600 dark:text-yellow-400">Parcial</span>
+                      : <span className="text-xs text-slate-500 dark:text-slate-600">Sin firma</span>}
                   </td>
                   <td className="px-4 py-3">
                     <Link
                       href={`/actas/${acta.id}/imprimir`}
-                      className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-700 transition-colors whitespace-nowrap"
+                      className="rounded-lg border border-slate-300 bg-slate-100 px-3 py-1.5 text-xs text-slate-800 hover:bg-slate-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 transition-colors whitespace-nowrap"
                     >
                       🖨 Imprimir
                     </Link>
@@ -310,7 +389,7 @@ function ActasTab() {
       )}
 
       {!loading && total > 0 && (
-        <p className="mt-2 text-xs text-slate-600">{total} acta{total !== 1 ? 's' : ''} en total</p>
+        <p className="mt-2 text-xs text-slate-500 dark:text-slate-600">{total} acta{total !== 1 ? 's' : ''} en total</p>
       )}
     </div>
   );
@@ -334,11 +413,11 @@ export default function HistorialPage() {
         {/* Header */}
         <div className="mb-6">
           <h1 className="text-2xl font-bold">Historial</h1>
-          <p className="mt-0.5 text-sm text-slate-400">Registro completo de movimientos y actas de entrega</p>
+          <p className="mt-0.5 text-sm text-slate-600 dark:text-slate-400">Registro completo de movimientos y actas de entrega</p>
         </div>
 
         {/* Tabs */}
-        <div className="mb-6 flex gap-1 rounded-xl border border-slate-800 bg-slate-900 p-1 w-fit">
+        <div className="mb-6 flex gap-1 rounded-xl border border-slate-200 bg-slate-100 p-1 w-fit dark:border-slate-800 dark:bg-slate-900">
           {[
             { id: 'movimientos' as const, label: 'Movimientos' },
             { id: 'actas' as const, label: 'Actas firmadas' },
@@ -348,8 +427,8 @@ export default function HistorialPage() {
               onClick={() => setTab(id)}
               className={`rounded-lg px-5 py-2 text-sm font-medium transition-colors ${
                 tab === id
-                  ? 'bg-slate-800 text-white'
-                  : 'text-slate-500 hover:text-slate-300'
+                  ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-800 dark:text-white'
+                  : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
               }`}
             >
               {label}

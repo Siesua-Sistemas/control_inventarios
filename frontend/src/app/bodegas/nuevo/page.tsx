@@ -43,10 +43,10 @@ export default function NuevaBodegaPage() {
       <NavBar />
       <main className="mx-auto max-w-xl px-4 py-8">
         <div className="mb-6">
-          <p className="text-sm uppercase tracking-[0.3em] text-cyan-300">Bodegas</p>
+          <p className="text-sm uppercase tracking-[0.3em] text-cyan-700 dark:text-cyan-300">Bodegas</p>
           <h1 className="mt-1 text-3xl font-bold">Nueva bodega</h1>
         </div>
-        <form onSubmit={handleSubmit} className="space-y-4 rounded-2xl border border-slate-800 bg-slate-900 p-6">
+        <form onSubmit={handleSubmit} className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
           <div>
             <label htmlFor="nombre">Nombre *</label>
             <input id="nombre" value={nombre} onChange={(e) => setNombre(e.target.value)} required />
@@ -70,10 +70,10 @@ export default function NuevaBodegaPage() {
             <label htmlFor="descripcion">Descripción</label>
             <input id="descripcion" value={descripcion} onChange={(e) => setDescripcion(e.target.value)} />
           </div>
-          {error && <p className="rounded-md bg-red-500/20 px-3 py-2 text-sm text-red-200">{error}</p>}
+          {error && <p className="rounded-md bg-red-100 px-3 py-2 text-sm text-red-700 dark:bg-red-500/20 dark:text-red-200">{error}</p>}
           <div className="flex gap-3">
-            <button type="submit" disabled={loading}>{loading ? 'Guardando...' : 'Crear bodega'}</button>
-            <button type="button" className="bg-slate-800 text-slate-100" onClick={() => router.push('/bodegas')}>Cancelar</button>
+            <button type="submit" disabled={loading} className="bg-cyan-600 text-white hover:bg-cyan-700 dark:bg-cyan-500 dark:text-slate-950 dark:hover:bg-cyan-400">{loading ? 'Guardando...' : 'Crear bodega'}</button>
+            <button type="button" className="bg-slate-200 text-slate-800 hover:bg-slate-300 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700" onClick={() => router.push('/bodegas')}>Cancelar</button>
           </div>
         </form>
       </main>

@@ -111,6 +111,7 @@ class EquipmentOut(BaseModel):
     observaciones: str | None
     bodega_id: int | None
     empleado_id: int | None
+    empleado_nombre: str | None = None
     parent_equipment_id: int | None
     is_active: bool
     created_at: datetime

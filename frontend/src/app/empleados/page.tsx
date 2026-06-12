@@ -4,11 +4,14 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
+import { useAuth } from '@/components/auth-provider';
 import { NavBar } from '@/components/nav-bar';
 import { deleteEmpleado, isAuthenticated, listEmpleados, type EmpleadoRow } from '@/lib/api';
 
 export default function EmpleadosPage() {
   const router = useRouter();
+  const { loading: authLoading, hasPermission } = useAuth();
+  const canWrite = authLoading || hasPermission('empleados:write');
   const [empleados, setEmpleados] = useState<EmpleadoRow[]>([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
@@ -42,12 +45,14 @@ export default function EmpleadosPage() {
       <main className="mx-auto max-w-6xl px-4 py-8">
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="text-sm uppercase tracking-[0.3em] text-cyan-300">Gestión</p>
+            <p className="text-sm uppercase tracking-[0.3em] text-cyan-700 dark:text-cyan-300">Gestión</p>
             <h1 className="mt-1 text-3xl font-bold">Empleados</h1>
           </div>
-          <Link href="/empleados/nuevo" className="rounded-md bg-cyan-500 px-4 py-2 font-semibold text-slate-950 hover:bg-cyan-400">
-            + Nuevo empleado
-          </Link>
+          {canWrite ? (
+            <Link href="/empleados/nuevo" className="rounded-md bg-cyan-500 px-4 py-2 font-semibold text-slate-950 hover:bg-cyan-400">
+              + Nuevo empleado
+            </Link>
+          ) : null}
         </div>
 
         <form onSubmit={(e) => { e.preventDefault(); fetch_(); }} className="mb-4 flex gap-2">
@@ -59,15 +64,15 @@ export default function EmpleadosPage() {
           />
           <button type="submit" className="px-4 py-2">Buscar</button>
           {search && (
-            <button type="button" className="bg-slate-800 px-3" onClick={() => { setSearch(''); fetch_(''); }}>✕</button>
+            <button type="button" className="bg-slate-200 text-slate-800 hover:bg-slate-300 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 px-3" onClick={() => { setSearch(''); fetch_(''); }}>✕</button>
           )}
         </form>
 
-        {error && <p className="mb-4 rounded-md bg-red-500/20 px-3 py-2 text-sm text-red-200">{error}</p>}
+        {error && <p className="mb-4 rounded-md bg-red-100 px-3 py-2 text-sm text-red-700 dark:bg-red-500/20 dark:text-red-200">{error}</p>}
 
-        <div className="overflow-x-auto rounded-2xl border border-slate-800 bg-slate-900">
+        <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
           <table className="min-w-full text-left text-sm">
-            <thead className="bg-slate-950 text-xs uppercase tracking-wider text-slate-400">
+            <thead className="bg-slate-100 dark:bg-slate-950 text-xs uppercase tracking-wider text-slate-600 dark:text-slate-400">
               <tr>
                 <th className="px-4 py-3">Nombre</th>
                 <th className="px-4 py-3">Cédula</th>
@@ -78,22 +83,24 @@ export default function EmpleadosPage() {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={5} className="px-4 py-10 text-center text-slate-400">Cargando...</td></tr>
+                <tr><td colSpan={5} className="px-4 py-10 text-center text-slate-600 dark:text-slate-400">Cargando...</td></tr>
               ) : empleados.length === 0 ? (
-                <tr><td colSpan={5} className="px-4 py-10 text-center text-slate-400">No hay empleados registrados.</td></tr>
+                <tr><td colSpan={5} className="px-4 py-10 text-center text-slate-600 dark:text-slate-400">No hay empleados registrados.</td></tr>
               ) : empleados.map((emp) => (
-                <tr key={emp.id} className="border-t border-slate-800 hover:bg-slate-800/40">
+                <tr key={emp.id} className="border-t border-slate-200 hover:bg-slate-100 dark:border-slate-800 dark:hover:bg-slate-800/40">
                   <td className="px-4 py-3 font-medium">{emp.nombre_completo}</td>
-                  <td className="px-4 py-3 font-mono text-xs text-slate-300">{emp.cedula}</td>
-                  <td className="px-4 py-3 text-slate-300">{emp.cargo ?? '—'}</td>
-                  <td className="px-4 py-3 text-slate-300">{emp.sede ?? '—'}</td>
+                  <td className="px-4 py-3 font-mono text-xs text-slate-700 dark:text-slate-300">{emp.cedula}</td>
+                  <td className="px-4 py-3 text-slate-700 dark:text-slate-300">{emp.cargo ?? '—'}</td>
+                  <td className="px-4 py-3 text-slate-700 dark:text-slate-300">{emp.sede ?? '—'}</td>
                   <td className="px-4 py-3 text-right">
-                    <button
-                      onClick={() => handleDelete(emp)}
-                      className="rounded-md bg-red-500/10 px-3 py-1 text-xs text-red-400 hover:bg-red-500/20"
-                    >
-                      Eliminar
-                    </button>
+                    {canWrite ? (
+                      <button
+                        onClick={() => handleDelete(emp)}
+                        className="rounded-md bg-red-100 px-3 py-1 text-xs text-red-700 hover:bg-red-200 dark:bg-red-500/10 dark:text-red-400 dark:hover:bg-red-500/20"
+                      >
+                        Eliminar
+                      </button>
+                    ) : null}
                   </td>
                 </tr>
               ))}

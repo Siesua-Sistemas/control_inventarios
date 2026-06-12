@@ -21,18 +21,24 @@ class BodegaRepository:
         )
 
     def count_equipos(self, bodega_id: int) -> int:
+        bodega = self.get_by_id(bodega_id)
+        if not bodega:
+            return 0
         return self.db.scalar(
             select(func.count()).where(
-                Equipment.bodega_id == bodega_id,
+                Equipment.sede == bodega.sede,
                 Equipment.is_active.is_(True),
             )
         ) or 0
 
     def get_equipos(self, bodega_id: int) -> list[Equipment]:
+        bodega = self.get_by_id(bodega_id)
+        if not bodega:
+            return []
         return list(
             self.db.scalars(
                 select(Equipment)
-                .where(Equipment.bodega_id == bodega_id, Equipment.is_active.is_(True))
+                .where(Equipment.sede == bodega.sede, Equipment.is_active.is_(True))
                 .order_by(Equipment.tipo, Equipment.marca)
             ).all()
         )

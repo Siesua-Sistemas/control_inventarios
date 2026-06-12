@@ -3,18 +3,27 @@
 @tailwind utilities;
 
 :root {
+  color-scheme: light;
+}
+
+:root.dark {
   color-scheme: dark;
 }
 
 body {
-  background-color: #161412;
-  color: #F8F4F0;
+  background-color: #FAF8F6;
+  color: #211D1A;
   min-height: 100vh;
 }
 
-input, select, textarea {
-  @apply rounded-md border border-slate-700 bg-slate-800 px-3 py-2 text-sm outline-none transition-colors;
+.dark body {
+  background-color: #161412;
   color: #F8F4F0;
+}
+
+input, select, textarea {
+  @apply rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition-colors text-slate-900;
+  @apply dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100;
 }
 
 input:focus, select:focus, textarea:focus {
@@ -30,6 +39,10 @@ button {
 }
 
 label {
-  color: #C8BFB8;
+  color: #52453F;
   font-size: 0.875rem;
+}
+
+.dark label {
+  color: #C8BFB8;
 }

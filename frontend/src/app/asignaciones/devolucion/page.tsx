@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
 
+import { useAuth } from '@/components/auth-provider';
 import { NavBar } from '@/components/nav-bar';
 import { SignaturePad } from '@/components/signature-pad';
 import {
@@ -35,6 +36,7 @@ interface EquipoItem {
 function DevolucionContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { loading: authLoading, hasPermission } = useAuth();
   const equipoId = Number(searchParams.get('eq'));
 
   const [profile, setProfile] = useState<EquipmentProfile | null>(null);
@@ -57,6 +59,11 @@ function DevolucionContent() {
 
   useEffect(() => {
     if (!isAuthenticated()) { router.replace('/login'); return; }
+    if (!authLoading && !hasPermission('asignaciones:write')) {
+      router.replace('/asignaciones');
+      return;
+    }
+    if (authLoading) return;
     if (!equipoId) { setError('Parámetro de equipo inválido.'); setLoading(false); return; }
 
     Promise.all([
@@ -100,7 +107,7 @@ function DevolucionContent() {
       })
       .catch(() => setError('Error al cargar los datos del equipo.'))
       .finally(() => setLoading(false));
-  }, [equipoId, router]);
+  }, [equipoId, router, authLoading, hasPermission]);
 
   const allChecked = checked.size === equipos.length && equipos.length > 0;
 
@@ -164,7 +171,7 @@ function DevolucionContent() {
   if (loading) return (
     <><NavBar />
       <main className="flex min-h-screen items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-700 border-t-cyan-500" />
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-300 border-t-cyan-600 dark:border-slate-700 dark:border-t-cyan-500" />
       </main>
     </>
   );
@@ -172,8 +179,8 @@ function DevolucionContent() {
   if (error || !profile || !asignacion) return (
     <><NavBar />
       <main className="flex min-h-screen flex-col items-center justify-center gap-4">
-        <p className="rounded-lg bg-red-900/30 px-4 py-2 text-sm text-red-300">{error || 'Error'}</p>
-        <button onClick={() => router.back()} className="text-cyan-400 hover:underline">← Volver</button>
+        <p className="rounded-lg bg-red-100 px-4 py-2 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-300">{error || 'Error'}</p>
+        <button onClick={() => router.back()} className="text-cyan-600 dark:text-cyan-400 hover:underline">← Volver</button>
       </main>
     </>
   );
@@ -184,14 +191,14 @@ function DevolucionContent() {
       <main className="mx-auto max-w-xl px-4 py-16 text-center">
         <div className="mb-6 text-5xl">✅</div>
         <h1 className="text-2xl font-bold">Devolución completada</h1>
-        <p className="mt-2 text-slate-400">El equipo fue devuelto y el acta fue registrada correctamente.</p>
+        <p className="mt-2 text-slate-600 dark:text-slate-400">El equipo fue devuelto y el acta fue registrada correctamente.</p>
         <div className="mt-8 flex flex-col gap-3">
           <Link href={`/actas/${actaId}/imprimir`}
             className="rounded-lg bg-cyan-500 px-6 py-3 text-sm font-semibold text-slate-950 hover:bg-cyan-400 transition-colors">
             🖨 Imprimir acta de devolución
           </Link>
           <Link href="/asignaciones"
-            className="rounded-lg border border-slate-700 bg-slate-800 px-6 py-3 text-sm text-slate-200 hover:bg-slate-700 transition-colors">
+            className="rounded-lg border border-slate-300 bg-slate-100 px-6 py-3 text-sm text-slate-800 hover:bg-slate-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 transition-colors">
             ← Volver a asignaciones
           </Link>
         </div>
@@ -204,8 +211,8 @@ function DevolucionContent() {
     <><NavBar />
       <main className="flex min-h-screen items-center justify-center">
         <div className="text-center">
-          <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-2 border-slate-700 border-t-cyan-500" />
-          <p className="text-slate-400">Registrando devolución...</p>
+          <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-2 border-slate-300 border-t-cyan-600 dark:border-slate-700 dark:border-t-cyan-500" />
+          <p className="text-slate-600 dark:text-slate-400">Registrando devolución...</p>
         </div>
       </main>
     </>
@@ -219,12 +226,12 @@ function DevolucionContent() {
 
         {/* Header */}
         <div className="mb-6">
-          <Link href="/asignaciones" className="text-xs text-slate-500 hover:text-slate-300 transition-colors">
+          <Link href="/asignaciones" className="text-xs text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-colors">
             ← Asignaciones
           </Link>
           <h1 className="mt-1 text-2xl font-bold">Acta de Devolución</h1>
-          <p className="text-sm text-slate-400">
-            <span className="font-mono text-cyan-400">{eq.codigo_interno}</span>
+          <p className="text-sm text-slate-600 dark:text-slate-400">
+            <span className="font-mono text-cyan-600 dark:text-cyan-400">{eq.codigo_interno}</span>
             {' · '}{eq.marca} {eq.modelo}
             {' · '}{asignacion.empleado_nombre}
           </p>
@@ -234,11 +241,11 @@ function DevolucionContent() {
         <div className="mb-8 flex items-center gap-0">
           {[{ key: 'checklist', label: '1. Revisión' }, { key: 'firmas', label: '2. Firma y devolución' }].map((s, i) => (
             <div key={s.key} className="flex items-center">
-              {i > 0 && <div className={`h-px w-12 ${step === 'firmas' ? 'bg-cyan-500' : 'bg-slate-700'}`} />}
+              {i > 0 && <div className={`h-px w-12 ${step === 'firmas' ? 'bg-cyan-500' : 'bg-slate-300 dark:bg-slate-700'}`} />}
               <div className={`flex items-center gap-1.5 rounded-full px-4 py-1.5 text-xs font-semibold transition-colors ${
                 step === s.key ? 'bg-cyan-500 text-slate-950'
-                  : step === 'firmas' && s.key === 'checklist' ? 'bg-lime-900/40 text-lime-400'
-                  : 'bg-slate-800 text-slate-400'
+                  : step === 'firmas' && s.key === 'checklist' ? 'bg-lime-100 text-lime-700 dark:bg-lime-900/40 dark:text-lime-400'
+                  : 'bg-slate-200 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
               }`}>
                 {step === 'firmas' && s.key === 'checklist' ? '✓ ' : ''}{s.label}
               </div>
@@ -248,72 +255,72 @@ function DevolucionContent() {
 
         {/* ─── Paso 1: Checklist ─────────────────────────────────────────────── */}
         {step === 'checklist' && (
-          <div className="rounded-2xl border border-slate-700 overflow-hidden">
-            <div className="bg-slate-900 px-6 py-4 border-b border-slate-800 flex items-center justify-between">
+          <div className="rounded-2xl border border-slate-300 dark:border-slate-700 overflow-hidden">
+            <div className="bg-white px-6 py-4 border-b border-slate-200 dark:bg-slate-900 dark:border-slate-800 flex items-center justify-between">
               <div>
                 <p className="font-semibold">Verificación de equipos devueltos</p>
-                <p className="text-xs text-slate-400 mt-0.5">Confirma que cada elemento fue recibido en buen estado</p>
+                <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">Confirma que cada elemento fue recibido en buen estado</p>
               </div>
               <div className="flex items-center gap-3">
-                <span className="text-sm text-slate-400">{checked.size}/{equipos.length}</span>
+                <span className="text-sm text-slate-600 dark:text-slate-400">{checked.size}/{equipos.length}</span>
                 <button onClick={checkAll}
-                  className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-700 transition-colors">
+                  className="rounded-lg border border-slate-300 bg-slate-100 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 transition-colors">
                   {allChecked ? 'Desmarcar todo' : 'Marcar todo'}
                 </button>
               </div>
             </div>
 
-            <div className="divide-y divide-slate-800">
+            <div className="divide-y divide-slate-200 dark:divide-slate-800">
               {equipos.map((eq) => {
                 const isChecked = checked.has(eq.id);
                 return (
                   <label key={eq.id}
                     className={`flex cursor-pointer items-center gap-4 px-6 py-4 transition-colors ${
-                      isChecked ? 'bg-lime-900/10' : 'hover:bg-slate-900'
+                      isChecked ? 'bg-lime-50 dark:bg-lime-900/10' : 'hover:bg-slate-100 dark:hover:bg-slate-900'
                     } ${!eq.esPrincipal ? 'pl-14' : ''}`}>
-                    {!eq.esPrincipal && <span className="text-slate-600 text-xs mr-1">└</span>}
+                    {!eq.esPrincipal && <span className="text-slate-500 dark:text-slate-600 text-xs mr-1">└</span>}
                     <input type="checkbox" checked={isChecked} onChange={() => toggleCheck(eq.id)}
                       className="h-5 w-5 shrink-0 cursor-pointer rounded accent-lime-500" />
                     <div className="grid flex-1 grid-cols-4 gap-3 items-center min-w-0">
                       <div className="min-w-0">
                         <p className="text-xs text-slate-500">Código</p>
-                        <p className={`font-mono text-sm font-bold truncate ${eq.esPrincipal ? 'text-cyan-400' : 'text-slate-400'}`}>
+                        <p className={`font-mono text-sm font-bold truncate ${eq.esPrincipal ? 'text-cyan-600 dark:text-cyan-400' : 'text-slate-600 dark:text-slate-400'}`}>
                           {eq.codigo}
                         </p>
                       </div>
                       <div className="min-w-0">
                         <p className="text-xs text-slate-500">Tipo</p>
-                        <p className="text-sm text-slate-300 truncate">{eq.tipo}</p>
+                        <p className="text-sm text-slate-700 dark:text-slate-300 truncate">{eq.tipo}</p>
                       </div>
                       <div className="min-w-0">
                         <p className="text-xs text-slate-500">Marca / Modelo</p>
-                        <p className="text-sm font-semibold text-white truncate">{eq.marca} {eq.modelo}</p>
+                        <p className="text-sm font-semibold text-slate-900 dark:text-white truncate">{eq.marca} {eq.modelo}</p>
                       </div>
                       <div>
-                        <span className={`inline-block rounded-full border px-2.5 py-0.5 text-xs font-semibold ${ESTADO_COLORS[eq.estado] ?? 'bg-slate-700 text-slate-300 border-slate-600'}`}>
+                        <span className={`inline-block rounded-full border px-2.5 py-0.5 text-xs font-semibold ${ESTADO_COLORS[eq.estado] ?? 'bg-slate-200 text-slate-700 border-slate-300 dark:bg-slate-700 dark:text-slate-300 dark:border-slate-600'}`}>
                           {eq.estado}
                         </span>
                       </div>
                     </div>
-                    {isChecked && <span className="shrink-0 text-lime-400">✓</span>}
+                    {isChecked && <span className="shrink-0 text-lime-600 dark:text-lime-400">✓</span>}
                   </label>
                 );
               })}
             </div>
 
             {/* Bodega destino */}
-            <div className="border-t border-slate-800 bg-slate-900/50 px-6 py-4">
-              <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-400">
+            <div className="border-t border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-900/50 px-6 py-4">
+              <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400">
                 Devolver a bodega (opcional)
               </label>
               <select value={bodegaDestinoId} onChange={(e) => setBodegaDestinoId(e.target.value)}
-                className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white focus:border-cyan-500 focus:outline-none">
+                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-cyan-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white">
                 <option value="">— Disponible (sin bodega) —</option>
                 {bodegas.map((b) => <option key={b.id} value={b.id}>{b.nombre} · {b.sede}</option>)}
               </select>
             </div>
 
-            <div className="bg-slate-950 border-t border-slate-800 px-6 py-4 flex items-center justify-between">
+            <div className="bg-slate-100 border-t border-slate-200 dark:bg-slate-950 dark:border-slate-800 px-6 py-4 flex items-center justify-between">
               <p className="text-xs text-slate-500">
                 {allChecked ? 'Todos los equipos verificados.' : `Faltan ${equipos.length - checked.size} por verificar.`}
               </p>
@@ -328,46 +335,46 @@ function DevolucionContent() {
         {/* ─── Paso 2: Firmas ────────────────────────────────────────────────── */}
         {step === 'firmas' && (
           <div className="space-y-6">
-            <div className="rounded-2xl border border-slate-700 bg-slate-900 p-6">
-              <p className="mb-4 text-xs font-semibold uppercase tracking-widest text-slate-400">Datos del acta de devolución</p>
+            <div className="rounded-2xl border border-slate-200 bg-white p-6 dark:border-slate-700 dark:bg-slate-900">
+              <p className="mb-4 text-xs font-semibold uppercase tracking-widest text-slate-600 dark:text-slate-400">Datos del acta de devolución</p>
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="flex flex-col gap-1.5">
-                  <span className="text-xs text-slate-400">Quien entrega (empleado) *</span>
+                  <span className="text-xs text-slate-600 dark:text-slate-400">Quien entrega (empleado) *</span>
                   <input value={entregaNombre} onChange={(e) => setEntregaNombre(e.target.value)}
                     placeholder="Nombre del empleado"
-                    className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white placeholder-slate-600 focus:border-cyan-500 focus:outline-none" />
+                    className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:border-cyan-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:placeholder-slate-600" />
                 </label>
                 <label className="flex flex-col gap-1.5">
-                  <span className="text-xs text-slate-400">Quien recibe (empresa) *</span>
+                  <span className="text-xs text-slate-600 dark:text-slate-400">Quien recibe (empresa) *</span>
                   <input value={recibeNombre} onChange={(e) => setRecibeNombre(e.target.value)}
                     placeholder="Nombre de quien recibe"
-                    className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white placeholder-slate-600 focus:border-cyan-500 focus:outline-none" />
+                    className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:border-cyan-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:placeholder-slate-600" />
                 </label>
               </div>
               <label className="mt-4 flex flex-col gap-1.5">
-                <span className="text-xs text-slate-400">Observaciones del estado del equipo</span>
+                <span className="text-xs text-slate-600 dark:text-slate-400">Observaciones del estado del equipo</span>
                 <textarea value={observaciones} onChange={(e) => setObservaciones(e.target.value)}
                   rows={2} placeholder="Estado en que se devuelve, novedades..."
-                  className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white placeholder-slate-600 focus:border-cyan-500 focus:outline-none resize-none" />
+                  className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:border-cyan-500 focus:outline-none resize-none dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:placeholder-slate-600" />
               </label>
             </div>
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <div className="rounded-2xl border border-slate-700 bg-slate-900 p-6">
+              <div className="rounded-2xl border border-slate-200 bg-white p-6 dark:border-slate-700 dark:bg-slate-900">
                 <SignaturePad label="Firma quien entrega" name={entregaNombre || '—'} onChange={setFirmaEntrega} />
               </div>
-              <div className="rounded-2xl border border-slate-700 bg-slate-900 p-6">
+              <div className="rounded-2xl border border-slate-200 bg-white p-6 dark:border-slate-700 dark:bg-slate-900">
                 <SignaturePad label="Firma quien recibe" name={recibeNombre || '—'} onChange={setFirmaRecibe} />
               </div>
             </div>
 
             {saveError && (
-              <p className="rounded-lg bg-red-900/30 px-4 py-2 text-sm text-red-300">{saveError}</p>
+              <p className="rounded-lg bg-red-100 px-4 py-2 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-300">{saveError}</p>
             )}
 
             <div className="flex items-center justify-between">
               <button onClick={() => setStep('checklist')}
-                className="rounded-lg border border-slate-700 bg-slate-800 px-5 py-2 text-sm text-slate-300 hover:bg-slate-700 transition-colors">
+                className="rounded-lg border border-slate-300 bg-slate-100 px-5 py-2 text-sm text-slate-700 hover:bg-slate-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 transition-colors">
                 ← Volver al checklist
               </button>
               <button onClick={handleGuardar}
@@ -384,7 +391,7 @@ function DevolucionContent() {
 
 export default function DevolucionPage() {
   return (
-    <Suspense fallback={<><NavBar /><main className="flex min-h-screen items-center justify-center"><p className="text-slate-400">Cargando...</p></main></>}>
+    <Suspense fallback={<><NavBar /><main className="flex min-h-screen items-center justify-center"><p className="text-slate-600 dark:text-slate-400">Cargando...</p></main></>}>
       <DevolucionContent />
     </Suspense>
   );

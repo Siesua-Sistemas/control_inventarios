@@ -90,20 +90,20 @@ export function SignaturePad({ label, name, onChange }: SignaturePadProps) {
     <div className="flex flex-col gap-2">
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">{label}</p>
-          <p className="text-sm font-medium text-slate-200">{name}</p>
+          <p className="text-xs font-semibold uppercase tracking-widest text-slate-600 dark:text-slate-400">{label}</p>
+          <p className="text-sm font-medium text-slate-800 dark:text-slate-200">{name}</p>
         </div>
         <button
           type="button"
           onClick={clear}
-          className="rounded-md px-3 py-1 text-xs text-slate-500 hover:text-slate-300 hover:bg-slate-800 transition-colors"
+          className="rounded-md px-3 py-1 text-xs text-slate-500 hover:text-slate-700 hover:bg-slate-100 dark:hover:text-slate-300 dark:hover:bg-slate-800 transition-colors"
         >
           Borrar
         </button>
       </div>
       <canvas
         ref={canvasRef}
-        className="h-44 w-full cursor-crosshair rounded-xl border border-slate-700 bg-white"
+        className="h-44 w-full cursor-crosshair rounded-xl border border-slate-300 bg-white dark:border-slate-700"
         style={{ touchAction: 'none' }}
         onMouseDown={startDraw}
         onMouseMove={draw}
@@ -113,7 +113,7 @@ export function SignaturePad({ label, name, onChange }: SignaturePadProps) {
         onTouchMove={draw}
         onTouchEnd={endDraw}
       />
-      <p className="text-center text-xs text-slate-600">Firma con el dedo o el mouse en el área de arriba</p>
+      <p className="text-center text-xs text-slate-500 dark:text-slate-600">Firma con el dedo o el mouse en el área de arriba</p>
     </div>
   );
 }

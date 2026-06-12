@@ -50,3 +50,9 @@ class Equipment(Base):
     is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    @property
+    def empleado_nombre(self) -> str | None:
+        if self.empleado:
+            return f'{self.empleado.nombres} {self.empleado.apellidos}'
+        return None

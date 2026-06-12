@@ -77,7 +77,7 @@ export default function EditarEquipoPage() {
       <>
         <NavBar />
         <main className="flex min-h-screen items-center justify-center">
-          <p className="text-slate-400">Cargando equipo...</p>
+          <p className="text-slate-600 dark:text-slate-400">Cargando equipo...</p>
         </main>
       </>
     );
@@ -88,7 +88,7 @@ export default function EditarEquipoPage() {
       <>
         <NavBar />
         <main className="flex min-h-screen items-center justify-center">
-          <p className="text-red-300">{error || 'Equipo no encontrado'}</p>
+          <p className="text-red-600 dark:text-red-300">{error || 'Equipo no encontrado'}</p>
         </main>
       </>
     );
@@ -99,15 +99,15 @@ export default function EditarEquipoPage() {
       <NavBar />
       <main className="mx-auto max-w-3xl px-4 py-8">
         <div className="mb-6">
-          <p className="text-sm uppercase tracking-[0.3em] text-cyan-300">Equipos</p>
+          <p className="text-sm uppercase tracking-[0.3em] text-cyan-700 dark:text-cyan-300">Equipos</p>
           <h1 className="mt-1 text-3xl font-bold">Editar equipo</h1>
-          <p className="mt-1 font-mono text-sm text-cyan-500">{codigoInterno}</p>
+          <p className="mt-1 font-mono text-sm text-cyan-600 dark:text-cyan-500">{codigoInterno}</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-6 rounded-2xl border border-slate-800 bg-slate-900 p-6">
+        <form onSubmit={handleSubmit} className="space-y-6 rounded-2xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
           {/* Identificación */}
           <section>
-            <h2 className="mb-4 text-xs font-semibold uppercase tracking-widest text-cyan-400">Identificación</h2>
+            <h2 className="mb-4 text-xs font-semibold uppercase tracking-widest text-cyan-600 dark:text-cyan-400">Identificación</h2>
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <label htmlFor="serial">Serial *</label>
@@ -137,7 +137,7 @@ export default function EditarEquipoPage() {
 
           {/* Ubicación */}
           <section>
-            <h2 className="mb-4 text-xs font-semibold uppercase tracking-widest text-cyan-400">Ubicación</h2>
+            <h2 className="mb-4 text-xs font-semibold uppercase tracking-widest text-cyan-600 dark:text-cyan-400">Ubicación</h2>
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <label htmlFor="sede">Sede *</label>
@@ -158,7 +158,7 @@ export default function EditarEquipoPage() {
 
           {/* Información financiera */}
           <section>
-            <h2 className="mb-4 text-xs font-semibold uppercase tracking-widest text-cyan-400">Información financiera</h2>
+            <h2 className="mb-4 text-xs font-semibold uppercase tracking-widest text-cyan-600 dark:text-cyan-400">Información financiera</h2>
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <label htmlFor="fecha_compra">Fecha de compra</label>
@@ -191,15 +191,15 @@ export default function EditarEquipoPage() {
               rows={3}
               value={form.observaciones ?? ''}
               onChange={(e) => set('observaciones', e.target.value)}
-              className="w-full rounded-md border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:border-cyan-400 focus:outline-none"
+              className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-cyan-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:focus:border-cyan-400"
             />
           </div>
 
-          {error ? <p className="rounded-md bg-red-500/20 px-3 py-2 text-sm text-red-200">{error}</p> : null}
+          {error ? <p className="rounded-md bg-red-100 px-3 py-2 text-sm text-red-700 dark:bg-red-500/20 dark:text-red-200">{error}</p> : null}
 
           <div className="flex gap-3">
-            <button type="submit" disabled={loading}>{loading ? 'Guardando...' : 'Guardar cambios'}</button>
-            <button type="button" className="bg-slate-800 text-slate-100" onClick={() => router.push('/equipos')}>
+            <button type="submit" disabled={loading} className="bg-cyan-600 text-white hover:bg-cyan-700 dark:bg-cyan-500 dark:text-slate-950 dark:hover:bg-cyan-400">{loading ? 'Guardando...' : 'Guardar cambios'}</button>
+            <button type="button" className="bg-slate-200 text-slate-800 hover:bg-slate-300 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700" onClick={() => router.push('/equipos')}>
               Cancelar
             </button>
           </div>
