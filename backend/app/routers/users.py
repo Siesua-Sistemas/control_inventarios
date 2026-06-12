@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.dependencies import require_permissions
 from app.repositories.user_repository import UserRepository
-from app.schemas.user import RoleOut, UserCreate, UserListResponse, UserOut
+from app.schemas.user import PermissionOut, RoleCreate, RoleOut, RoleUpdate, UserCreate, UserListResponse, UserOut, UserUpdate
 from app.services.user_service import UserService
 
 router = APIRouter(prefix='/api/v1/users', tags=['users'])
@@ -79,3 +79,59 @@ def list_permissions(db: Session = Depends(get_db), user=Depends(require_permiss
         }
         for permission in permissions
     ]
+
+
+@router.post('/roles', response_model=RoleOut)
+def create_role(payload: RoleCreate, db: Session = Depends(get_db), user=Depends(require_permissions('roles:write'))):
+    repository = UserRepository(db)
+    service = UserService(repository)
+    role = service.create_role(payload)
+    return RoleOut(
+        id=role.id,
+        name=role.name,
+        description=role.description,
+        permissions=[PermissionOut(id=p.id, code=p.code, name=p.name, description=p.description) for p in role.permissions],
+    )
+
+
+@router.patch('/roles/{role_id}', response_model=RoleOut)
+def update_role(role_id: int, payload: RoleUpdate, db: Session = Depends(get_db), user=Depends(require_permissions('roles:write'))):
+    repository = UserRepository(db)
+    service = UserService(repository)
+    role = service.update_role(role_id, payload)
+    return RoleOut(
+        id=role.id,
+        name=role.name,
+        description=role.description,
+        permissions=[PermissionOut(id=p.id, code=p.code, name=p.name, description=p.description) for p in role.permissions],
+    )
+
+
+@router.get('/{user_id}', response_model=UserOut)
+def get_user(user_id: int, db: Session = Depends(get_db), user=Depends(require_permissions('users:read'))):
+    repository = UserRepository(db)
+    service = UserService(repository)
+    target = service.get_user(user_id)
+    return UserOut(
+        id=target.id,
+        email=target.email,
+        full_name=target.full_name,
+        is_active=target.is_active,
+        created_at=target.created_at,
+        roles=[RoleOut(id=role.id, name=role.name, description=role.description, permissions=[]) for role in target.roles],
+    )
+
+
+@router.patch('/{user_id}', response_model=UserOut)
+def update_user(user_id: int, payload: UserUpdate, db: Session = Depends(get_db), user=Depends(require_permissions('users:write'))):
+    repository = UserRepository(db)
+    service = UserService(repository)
+    target = service.update_user(user_id, payload)
+    return UserOut(
+        id=target.id,
+        email=target.email,
+        full_name=target.full_name,
+        is_active=target.is_active,
+        created_at=target.created_at,
+        roles=[RoleOut(id=role.id, name=role.name, description=role.description, permissions=[]) for role in target.roles],
+    )

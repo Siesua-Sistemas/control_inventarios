@@ -38,3 +38,15 @@ def require_permissions(*required_permissions: str):
         return user
 
     return dependency
+
+
+def require_any_permission(*required_permissions: str):
+    def dependency(user: User = Depends(get_current_user)) -> User:
+        permissions = {permission.code for role in user.roles for permission in role.permissions}
+        if not required_permissions:
+            return user
+        if not set(required_permissions) & permissions:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Permisos insuficientes')
+        return user
+
+    return dependency

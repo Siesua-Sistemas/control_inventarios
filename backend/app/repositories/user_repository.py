@@ -28,11 +28,37 @@ class UserRepository:
     def get_role_by_id(self, role_id: int) -> Role | None:
         return self.db.get(Role, role_id)
 
+    def get_role_by_name(self, name: str) -> Role | None:
+        return self.db.scalar(select(Role).where(Role.name == name))
+
+    def get_permissions_by_ids(self, permission_ids: list[int]) -> list[Permission]:
+        if not permission_ids:
+            return []
+        return self.db.scalars(select(Permission).where(Permission.id.in_(permission_ids))).all()
+
     def create_user(self, user: User) -> User:
         self.db.add(user)
         self.db.commit()
         self.db.refresh(user)
         return user
+
+    def update_user(self, user: User) -> User:
+        self.db.add(user)
+        self.db.commit()
+        self.db.refresh(user)
+        return user
+
+    def create_role(self, role: Role) -> Role:
+        self.db.add(role)
+        self.db.commit()
+        self.db.refresh(role)
+        return role
+
+    def update_role(self, role: Role) -> Role:
+        self.db.add(role)
+        self.db.commit()
+        self.db.refresh(role)
+        return role
 
     def create_refresh_token(self, token_record: RefreshToken) -> RefreshToken:
         self.db.add(token_record)

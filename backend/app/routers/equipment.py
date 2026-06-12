@@ -221,6 +221,6 @@ def update_equipment(
 def delete_equipment(
     equipment_id: int,
     service: EquipmentService = Depends(_service),
-    _user=Depends(require_permissions('equipment:write')),
+    _user=Depends(require_permissions('equipment:delete')),
 ):
     service.delete_equipment(equipment_id)

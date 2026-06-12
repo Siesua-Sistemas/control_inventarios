@@ -55,7 +55,7 @@ def devolver(
 def trasladar(
     payload: TrasladarRequest,
     service: AsignacionService = Depends(_service),
-    user=Depends(require_permissions('asignaciones:write')),
+    user=Depends(require_permissions('asignaciones:trasladar')),
 ):
     return service.trasladar(payload, user.id)
 

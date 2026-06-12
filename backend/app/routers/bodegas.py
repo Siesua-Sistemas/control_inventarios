@@ -54,7 +54,7 @@ def update_bodega(
     bodega_id: int,
     payload: BodegaUpdate,
     service: BodegaService = Depends(_service),
-    _user=Depends(require_permissions('bodegas:write')),
+    _user=Depends(require_permissions('bodegas:delete')),
 ):
     b = service.update_bodega(bodega_id, payload)
     from app.repositories.bodega_repository import BodegaRepository as BR
@@ -69,6 +69,6 @@ def update_bodega(
 def delete_bodega(
     bodega_id: int,
     service: BodegaService = Depends(_service),
-    _user=Depends(require_permissions('bodegas:write')),
+    _user=Depends(require_permissions('bodegas:delete')),
 ):
     service.delete_bodega(bodega_id)

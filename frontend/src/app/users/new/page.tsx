@@ -80,11 +80,11 @@ export default function CreateUserPage() {
       <NavBar />
       <main className="mx-auto flex min-h-screen max-w-3xl flex-col px-4 py-10">
       <div className="mb-6">
-        <p className="text-sm uppercase tracking-[0.3em] text-cyan-300">Usuarios</p>
+        <p className="text-sm uppercase tracking-[0.3em] text-cyan-700 dark:text-cyan-300">Usuarios</p>
         <h1 className="mt-2 text-3xl font-bold">Crear usuario</h1>
       </div>
 
-      <form onSubmit={handleSubmit} className="rounded-2xl border border-slate-800 bg-slate-900 p-6 shadow-2xl">
+      <form onSubmit={handleSubmit} className="rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-800 dark:bg-slate-900">
         <div className="grid gap-4 md:grid-cols-2">
           <div>
             <label htmlFor="fullName">Nombre completo</label>
@@ -101,14 +101,14 @@ export default function CreateUserPage() {
         </div>
 
         <div className="mt-6">
-          <p className="mb-3 text-sm font-semibold text-slate-200">Roles y permisos</p>
+          <p className="mb-3 text-sm font-semibold text-slate-800 dark:text-slate-200">Roles y permisos</p>
           <div className="grid gap-3 md:grid-cols-2">
             {roles.map((role) => (
-              <label key={role.id} className="rounded-xl border border-slate-800 bg-slate-950 p-3">
+              <label key={role.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950">
                 <div className="flex items-center justify-between gap-4">
                   <span>
                     <span className="block font-semibold">{role.name}</span>
-                    <span className="block text-xs text-slate-300">{role.description}</span>
+                    <span className="block text-xs text-slate-700 dark:text-slate-300">{role.description}</span>
                   </span>
                   <input
                     type="checkbox"
@@ -121,16 +121,16 @@ export default function CreateUserPage() {
           </div>
         </div>
 
-        {error ? <p className="mt-4 rounded-md bg-red-500/20 px-3 py-2 text-sm text-red-200">{error}</p> : null}
-        {success ? <p className="mt-4 rounded-md bg-emerald-500/20 px-3 py-2 text-sm text-emerald-200">{success}</p> : null}
+        {error ? <p className="mt-4 rounded-md bg-red-100 px-3 py-2 text-sm text-red-700 dark:bg-red-500/20 dark:text-red-200">{error}</p> : null}
+        {success ? <p className="mt-4 rounded-md bg-emerald-100 px-3 py-2 text-sm text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200">{success}</p> : null}
 
         <div className="mt-6 flex gap-3">
-          <button type="submit" className="px-4 py-2" disabled={loading}>
+          <button type="submit" className="px-4 py-2 bg-cyan-600 text-white hover:bg-cyan-700 dark:bg-cyan-500 dark:text-slate-950 dark:hover:bg-cyan-400" disabled={loading}>
             {loading ? 'Creando...' : 'Crear usuario'}
           </button>
           <button
             type="button"
-            className="bg-slate-800 text-slate-100"
+            className="bg-slate-200 text-slate-800 hover:bg-slate-300 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"
             onClick={() => router.push('/users')}
           >
             Cancelar

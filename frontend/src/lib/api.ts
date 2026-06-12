@@ -165,6 +165,7 @@ export interface EquipmentRow {
   observaciones: string | null;
   bodega_id: number | null;
   empleado_id: number | null;
+  empleado_nombre?: string | null;
   parent_equipment_id: number | null;
   is_active: boolean;
   created_at: string;
@@ -568,4 +569,95 @@ export interface DashboardStats {
 
 export async function getDashboardStats(): Promise<DashboardStats> {
   return apiRequest('/api/v1/dashboard');
+}
+
+// ── Usuarios, roles y permisos ────────────────────────────────────────────────
+
+export interface PermissionItem {
+  id: number;
+  code: string;
+  name: string;
+  description: string | null;
+}
+
+export interface RoleItem {
+  id: number;
+  name: string;
+  description: string | null;
+  permissions: PermissionItem[];
+}
+
+export interface UserItem {
+  id: number;
+  email: string;
+  full_name: string;
+  is_active: boolean;
+  created_at: string;
+  roles: RoleItem[];
+}
+
+export interface MeResponse {
+  id: number;
+  email: string;
+  full_name: string;
+  roles: string[];
+  permissions: string[];
+}
+
+export async function getMe(): Promise<MeResponse> {
+  return apiRequest<MeResponse>('/api/v1/auth/me');
+}
+
+export async function listUsers(): Promise<{ total: number; items: UserItem[] }> {
+  return apiRequest('/api/v1/users');
+}
+
+export async function getUser(id: number): Promise<UserItem> {
+  return apiRequest(`/api/v1/users/${id}`);
+}
+
+export interface UserUpdatePayload {
+  email?: string;
+  full_name?: string;
+  password?: string;
+  is_active?: boolean;
+  role_ids?: number[];
+}
+
+export async function updateUser(id: number, data: UserUpdatePayload): Promise<UserItem> {
+  return apiRequest<UserItem>(`/api/v1/users/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function listRoles(): Promise<RoleItem[]> {
+  return apiRequest('/api/v1/users/roles');
+}
+
+export async function listPermissions(): Promise<PermissionItem[]> {
+  return apiRequest('/api/v1/users/permissions');
+}
+
+export interface RolePayload {
+  name: string;
+  description?: string | null;
+  permission_ids: number[];
+}
+
+export async function createRole(data: RolePayload): Promise<RoleItem> {
+  return apiRequest<RoleItem>('/api/v1/users/roles', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateRole(id: number, data: Partial<RolePayload>): Promise<RoleItem> {
+  return apiRequest<RoleItem>(`/api/v1/users/roles/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
 }

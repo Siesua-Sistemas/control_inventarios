@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.dependencies import require_permissions
+from app.dependencies import require_any_permission
 from app.repositories.acta_entrega_repository import ActaEntregaRepository
 from app.schemas.acta_entrega import ActaEntregaCreate, ActaEntregaRow, ActaListResponse
 
@@ -39,7 +39,7 @@ def _to_row(acta) -> ActaEntregaRow:
 def create_acta(
     payload: ActaEntregaCreate,
     repo: ActaEntregaRepository = Depends(_repo),
-    user=Depends(require_permissions('asignaciones:write')),
+    user=Depends(require_any_permission('asignaciones:write', 'bodegas:write')),
 ):
     data = payload.model_dump()
     data['created_by_id'] = user.id
@@ -58,7 +58,7 @@ def list_actas(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
     repo: ActaEntregaRepository = Depends(_repo),
-    _user=Depends(require_permissions('asignaciones:read')),
+    _user=Depends(require_any_permission('asignaciones:read', 'bodegas:read')),
 ):
     items, total = repo.list(tipo, sede, bodega_id, empleado_id, desde, hasta, skip, limit)
     return {'total': total, 'items': [_to_row(a) for a in items]}
@@ -68,7 +68,7 @@ def list_actas(
 def get_acta(
     acta_id: int,
     repo: ActaEntregaRepository = Depends(_repo),
-    _user=Depends(require_permissions('asignaciones:read')),
+    _user=Depends(require_any_permission('asignaciones:read', 'bodegas:read')),
 ):
     acta = repo.get_by_id(acta_id)
     if not acta:
