@@ -20,8 +20,17 @@ services:
       redis:
         condition: service_started
     restart: unless-stopped
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.inventario-backend.rule=Host(`srv1358836.hstgr.cloud`) && PathPrefix(`/api`)
+      - traefik.http.routers.inventario-backend.entrypoints=websecure
+      - traefik.http.routers.inventario-backend.tls=true
+      - traefik.http.routers.inventario-backend.tls.certresolver=mytlschallenge
+      - traefik.http.services.inventario-backend.loadbalancer.server.port=8000
+      - traefik.http.routers.inventario-backend.priority=10
     networks:
       - app-network
+      - n8n_default
 
   frontend:
     build:
@@ -41,8 +50,16 @@ services:
     depends_on:
       - backend
     restart: unless-stopped
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.inventario-frontend.rule=Host(`srv1358836.hstgr.cloud`)
+      - traefik.http.routers.inventario-frontend.entrypoints=websecure
+      - traefik.http.routers.inventario-frontend.tls=true
+      - traefik.http.routers.inventario-frontend.tls.certresolver=mytlschallenge
+      - traefik.http.services.inventario-frontend.loadbalancer.server.port=3000
     networks:
       - app-network
+      - n8n_default
 
   postgres:
     image: postgres:16-alpine
@@ -80,4 +97,5 @@ volumes:
 networks:
   app-network:
     driver: bridge
-
+  n8n_default:
+    external: true
