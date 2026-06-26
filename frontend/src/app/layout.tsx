@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 
 const THEME_INIT_SCRIPT = `
   try {
-    var theme = localStorage.getItem('theme') || 'dark';
+    var theme = localStorage.getItem('theme') || 'light';
     if (theme === 'dark') document.documentElement.classList.add('dark');
   } catch (e) {}
 `;
