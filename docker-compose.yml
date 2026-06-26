@@ -22,7 +22,7 @@ services:
     restart: unless-stopped
     labels:
       - traefik.enable=true
-      - traefik.http.routers.inventario-backend.rule=Host(`srv1358836.hstgr.cloud`) && PathPrefix(`/api`)
+      - traefik.http.routers.inventario-backend.rule=Host(`control.srv1358836.hstgr.cloud`) && PathPrefix(`/api`)
       - traefik.http.routers.inventario-backend.entrypoints=websecure
       - traefik.http.routers.inventario-backend.tls=true
       - traefik.http.routers.inventario-backend.tls.certresolver=mytlschallenge
@@ -52,7 +52,7 @@ services:
     restart: unless-stopped
     labels:
       - traefik.enable=true
-      - traefik.http.routers.inventario-frontend.rule=Host(`srv1358836.hstgr.cloud`)
+      - traefik.http.routers.inventario-frontend.rule=Host(`control.srv1358836.hstgr.cloud`)
       - traefik.http.routers.inventario-frontend.entrypoints=websecure
       - traefik.http.routers.inventario-frontend.tls=true
       - traefik.http.routers.inventario-frontend.tls.certresolver=mytlschallenge
