@@ -16,7 +16,6 @@ export default function PazYSalvoBodegaPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const { loading: authLoading, hasPermission } = useAuth();
-
   const [data, setData] = useState<BodegaInventario | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');

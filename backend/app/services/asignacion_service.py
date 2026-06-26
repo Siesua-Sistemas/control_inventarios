@@ -189,7 +189,7 @@ class AsignacionService:
         desde: date | None,
         hasta: date | None,
         skip: int = 0,
-        limit: int = 50,
+        limit: int | None = 50,
     ) -> tuple[list[AsignacionOut], int]:
         items, count = self.repo.list_historial(equipment_id, empleado_id, tipo, desde, hasta, skip, limit)
         return [_to_out(a) for a in items], count

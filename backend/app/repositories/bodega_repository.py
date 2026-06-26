@@ -24,12 +24,8 @@ class BodegaRepository:
         bodega = self.get_by_id(bodega_id)
         if not bodega:
             return 0
-        return self.db.scalar(
-            select(func.count()).where(
-                Equipment.sede == bodega.sede,
-                Equipment.is_active.is_(True),
-            )
-        ) or 0
+        filters = [Equipment.sede == bodega.sede, Equipment.is_active.is_(True)]
+        return self.db.scalar(select(func.count()).where(*filters)) or 0
 
     def get_equipos(self, bodega_id: int) -> list[Equipment]:
         bodega = self.get_by_id(bodega_id)

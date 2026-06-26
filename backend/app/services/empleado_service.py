@@ -1,10 +1,14 @@
 from datetime import datetime
 
 from fastapi import HTTPException, status
+from sqlalchemy import select
 
 from app.models.empleado import Empleado
+from app.models.sede_jornada import SedeJornada
 from app.repositories.empleado_repository import EmpleadoRepository
 from app.schemas.empleado import EmpleadoCreate, EmpleadoOut, EmpleadoUpdate
+
+_JORNADA_FIELDS = {'en_jornada', 'sedes_jornada_ids'}
 
 
 def _to_out(emp: Empleado) -> EmpleadoOut:
@@ -18,6 +22,8 @@ def _to_out(emp: Empleado) -> EmpleadoOut:
         sede=emp.sede,
         email=emp.email,
         telefono=emp.telefono,
+        en_jornada=emp.en_jornada,
+        sedes_jornada_ids=[s.id for s in (emp.sedes_jornada or [])],
         nombre_completo=f'{emp.nombres} {emp.apellidos}',
         is_active=emp.is_active,
         created_at=emp.created_at,
@@ -28,8 +34,24 @@ class EmpleadoService:
     def __init__(self, repository: EmpleadoRepository):
         self.repository = repository
 
-    def list_empleados(self, search: str | None, sede: str | None) -> list[EmpleadoOut]:
-        return [_to_out(e) for e in self.repository.list_empleados(search, sede)]
+    def _set_sedes(self, emp: Empleado, sede_ids: list[int]) -> None:
+        sedes = list(self.repository.db.scalars(
+            select(SedeJornada).where(
+                SedeJornada.id.in_(sede_ids),
+                SedeJornada.is_active.is_(True),
+            )
+        ).all())
+        emp.sedes_jornada = sedes
+
+    def list_empleados(
+        self,
+        search: str | None,
+        sede: str | None,
+        skip: int = 0,
+        limit: int | None = None,
+    ) -> tuple[list[EmpleadoOut], int]:
+        items, total = self.repository.list_empleados(search, sede, skip, limit)
+        return [_to_out(e) for e in items], total
 
     def get_empleado(self, empleado_id: int) -> Empleado:
         emp = self.repository.get_by_id(empleado_id)
@@ -50,8 +72,14 @@ class EmpleadoService:
             sede=payload.sede.strip() if payload.sede else None,
             email=payload.email.strip() if payload.email else None,
             telefono=payload.telefono.strip() if payload.telefono else None,
+            en_jornada=payload.en_jornada,
         )
-        return _to_out(self.repository.create(emp))
+        created = self.repository.create(emp)
+        if payload.sedes_jornada_ids:
+            self._set_sedes(created, payload.sedes_jornada_ids)
+            self.repository.db.commit()
+            self.repository.db.refresh(created)
+        return _to_out(created)
 
     def update_empleado(self, empleado_id: int, payload: EmpleadoUpdate) -> EmpleadoOut:
         emp = self.get_empleado(empleado_id)
@@ -59,8 +87,19 @@ class EmpleadoService:
             existing = self.repository.get_by_cedula(payload.cedula.strip())
             if existing:
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='La cédula ya está registrada')
-        for field, value in payload.model_dump(exclude_none=True).items():
+
+        # Scalar fields
+        for field, value in payload.model_dump(exclude_none=True, exclude=_JORNADA_FIELDS).items():
             setattr(emp, field, value.strip() if isinstance(value, str) else value)
+
+        # Jornada toggle
+        if payload.en_jornada is not None:
+            emp.en_jornada = payload.en_jornada
+
+        # Multi-sede assignment
+        if payload.sedes_jornada_ids is not None:
+            self._set_sedes(emp, payload.sedes_jornada_ids)
+
         emp.updated_at = datetime.utcnow()
         return _to_out(self.repository.update(emp))
 

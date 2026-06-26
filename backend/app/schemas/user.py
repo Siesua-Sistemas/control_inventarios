@@ -1,6 +1,9 @@
 from datetime import datetime
 
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, field_validator
+
+DASHBOARDS_VALIDOS = {'general', 'inventario', 'entregas', 'tecnico'}
+DOMINIOS_VALIDOS = {'IT', 'BIOINGENIERIA'}
 
 
 class PermissionOut(BaseModel):
@@ -14,6 +17,8 @@ class RoleOut(BaseModel):
     id: int
     name: str
     description: str | None = None
+    home_dashboard: str = 'general'
+    dominios: list[str] = ['IT']
     permissions: list[PermissionOut] = []
 
 
@@ -49,10 +54,45 @@ class UserListResponse(BaseModel):
 class RoleCreate(BaseModel):
     name: str
     description: str | None = None
+    home_dashboard: str = 'general'
+    dominios: list[str] = ['IT']
     permission_ids: list[int] = []
+
+    @field_validator('home_dashboard')
+    @classmethod
+    def home_dashboard_valido(cls, v: str) -> str:
+        if v not in DASHBOARDS_VALIDOS:
+            raise ValueError(f'Dashboard inválido. Opciones: {", ".join(sorted(DASHBOARDS_VALIDOS))}')
+        return v
+
+    @field_validator('dominios')
+    @classmethod
+    def dominios_validos(cls, v: list[str]) -> list[str]:
+        invalid = [d for d in v if d not in DOMINIOS_VALIDOS]
+        if invalid:
+            raise ValueError(f'Dominio(s) inválido(s): {invalid}. Opciones: {sorted(DOMINIOS_VALIDOS)}')
+        return v
 
 
 class RoleUpdate(BaseModel):
     name: str | None = None
     description: str | None = None
+    home_dashboard: str | None = None
+    dominios: list[str] | None = None
     permission_ids: list[int] | None = None
+
+    @field_validator('home_dashboard')
+    @classmethod
+    def home_dashboard_valido(cls, v: str | None) -> str | None:
+        if v is not None and v not in DASHBOARDS_VALIDOS:
+            raise ValueError(f'Dashboard inválido. Opciones: {", ".join(sorted(DASHBOARDS_VALIDOS))}')
+        return v
+
+    @field_validator('dominios')
+    @classmethod
+    def dominios_validos(cls, v: list[str] | None) -> list[str] | None:
+        if v is not None:
+            invalid = [d for d in v if d not in DOMINIOS_VALIDOS]
+            if invalid:
+                raise ValueError(f'Dominio(s) inválido(s): {invalid}')
+        return v

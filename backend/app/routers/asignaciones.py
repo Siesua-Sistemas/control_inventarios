@@ -11,6 +11,7 @@ from app.repositories.empleado_repository import EmpleadoRepository
 from app.repositories.equipment_repository import EquipmentRepository
 from app.schemas.asignacion import AsignacionListResponse, DevolverRequest, EntregarMultipleRequest, EntregarRequest, TrasladarRequest
 from app.services.asignacion_service import AsignacionService
+from app.utils.csv_export import csv_response
 
 router = APIRouter(prefix='/api/v1/asignaciones', tags=['asignaciones'])
 
@@ -83,3 +84,44 @@ def get_historial(
 ):
     items, total = service.get_historial(equipment_id, empleado_id, tipo, desde, hasta, skip, limit)
     return {'total': total, 'items': items}
+
+
+@router.get('/historial/export')
+def export_historial(
+    equipment_id: int | None = Query(None),
+    empleado_id: int | None = Query(None),
+    tipo: str | None = Query(None),
+    desde: date | None = Query(None),
+    hasta: date | None = Query(None),
+    service: AsignacionService = Depends(_service),
+    _user=Depends(require_permissions('asignaciones:read', 'reports:export')),
+):
+    items, _ = service.get_historial(equipment_id, empleado_id, tipo, desde, hasta, 0, None)
+    rows = [
+        [
+            a.fecha.isoformat(),
+            a.tipo,
+            a.equipment_codigo,
+            a.equipment_serial,
+            a.equipment_tipo,
+            a.equipment_marca,
+            a.equipment_modelo,
+            a.equipment_sede,
+            a.empleado_nombre or '',
+            a.empleado_cedula or '',
+            a.bodega_origen_nombre or '',
+            a.bodega_destino_nombre or '',
+            a.estado_antes or '',
+            a.estado_despues or '',
+            a.observaciones or '',
+            a.created_by_nombre,
+        ]
+        for a in items
+    ]
+    return csv_response(
+        'historial_movimientos.csv',
+        ['Fecha', 'Tipo', 'Código equipo', 'Serial', 'Tipo equipo', 'Marca', 'Modelo', 'Sede',
+         'Empleado', 'Cédula', 'Bodega origen', 'Bodega destino', 'Estado anterior', 'Estado nuevo',
+         'Observaciones', 'Registrado por'],
+        rows,
+    )

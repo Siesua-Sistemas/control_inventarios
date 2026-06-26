@@ -37,6 +37,8 @@ function SortableTh<T extends string>(props: {
   );
 }
 
+const PAGE_SIZE = 50;
+
 type SortField = 'equipo' | 'empleado' | 'sede' | 'fecha';
 
 function sortValue(a: AsignacionRow, field: SortField): string | number {
@@ -359,6 +361,7 @@ function AsignacionesContent() {
   const [actasMap, setActasMap] = useState<Map<number, number>>(new Map());
 
   const [search, setSearch] = useState('');
+  const [page, setPage] = useState(0);
   const [sortField, setSortField] = useState<SortField>('fecha');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [showEntregarPanel, setShowEntregarPanel] = useState(false);
@@ -411,6 +414,7 @@ function AsignacionesContent() {
       setSortField(field);
       setSortDir('asc');
     }
+    setPage(0);
   };
 
   const filtered = (search.trim()
@@ -430,6 +434,8 @@ function AsignacionesContent() {
     const cmp = compareValues(sortValue(a, sortField), sortValue(b, sortField));
     return sortDir === 'asc' ? cmp : -cmp;
   });
+
+  const paged = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
   const handleEntregaExitosa = async (empId: number, eqIds: number[]) => {
     setShowEntregarPanel(false);
@@ -538,12 +544,12 @@ function AsignacionesContent() {
         <div className="mb-4 flex items-center gap-2">
           <input
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => { setSearch(e.target.value); setPage(0); }}
             placeholder="Buscar por código, serial, empleado, marca..."
             className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:border-indigo-500 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-white dark:placeholder-slate-600"
           />
           {search && (
-            <button onClick={() => setSearch('')} className="rounded-lg border border-slate-300 px-3 py-2 text-xs text-slate-600 hover:text-slate-900 dark:border-slate-700 dark:text-slate-400 dark:hover:text-slate-200">
+            <button onClick={() => { setSearch(''); setPage(0); }} className="rounded-lg border border-slate-300 px-3 py-2 text-xs text-slate-600 hover:text-slate-900 dark:border-slate-700 dark:text-slate-400 dark:hover:text-slate-200">
               ✕ Limpiar
             </button>
           )}
@@ -573,7 +579,7 @@ function AsignacionesContent() {
                       : 'Sin resultados para la búsqueda.'}
                   </td>
                 </tr>
-              ) : filtered.map((a) => (
+              ) : paged.map((a) => (
                 <tr key={a.id} className="border-t border-slate-200 hover:bg-slate-100 dark:border-slate-800 dark:hover:bg-slate-800/30 transition-colors">
                   <td className="px-4 py-3">
                     <button
@@ -635,9 +641,30 @@ function AsignacionesContent() {
         </div>
 
         {activas.length > 0 && (
-          <p className="mt-2 text-right text-xs text-slate-500 dark:text-slate-600">
-            {filtered.length} de {activas.length} asignación{activas.length !== 1 ? 'es' : ''}
-          </p>
+          <div className="mt-2 flex items-center justify-between text-xs text-slate-500 dark:text-slate-600">
+            <span>{filtered.length} de {activas.length} asignación{activas.length !== 1 ? 'es' : ''}</span>
+            {filtered.length > PAGE_SIZE && (
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setPage((p) => p - 1)}
+                  disabled={page === 0}
+                  className="rounded-md bg-slate-100 px-3 py-1 text-slate-700 hover:bg-slate-200 disabled:opacity-50 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                >
+                  ← Anterior
+                </button>
+                <span>Página {page + 1} de {Math.ceil(filtered.length / PAGE_SIZE)}</span>
+                <button
+                  type="button"
+                  onClick={() => setPage((p) => p + 1)}
+                  disabled={(page + 1) * PAGE_SIZE >= filtered.length}
+                  className="rounded-md bg-slate-100 px-3 py-1 text-slate-700 hover:bg-slate-200 disabled:opacity-50 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                >
+                  Siguiente →
+                </button>
+              </div>
+            )}
+          </div>
         )}
       </main>
     </>

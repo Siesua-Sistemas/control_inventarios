@@ -1,4 +1,4 @@
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models.equipment import Equipment
@@ -14,7 +14,10 @@ class EquipmentRepository:
         tipo: str | None = None,
         sede: str | None = None,
         estado: str | None = None,
-    ) -> list[Equipment]:
+        criticidad: str | None = None,
+        skip: int = 0,
+        limit: int | None = None,
+    ) -> tuple[list[Equipment], int]:
         query = select(Equipment).where(Equipment.is_active.is_(True))
 
         if search:
@@ -33,8 +36,15 @@ class EquipmentRepository:
             query = query.where(Equipment.sede.ilike(f'%{sede}%'))
         if estado:
             query = query.where(Equipment.estado == estado)
+        if criticidad:
+            query = query.where(Equipment.criticidad == criticidad)
 
-        return list(self.db.scalars(query.order_by(Equipment.created_at.desc())).all())
+        total = self.db.scalar(select(func.count()).select_from(query.subquery())) or 0
+        query = query.order_by(Equipment.created_at.desc())
+        if limit is not None:
+            query = query.offset(skip).limit(limit)
+        items = list(self.db.scalars(query).all())
+        return items, total
 
     def get_by_id(self, equipment_id: int) -> Equipment | None:
         return self.db.scalar(

@@ -7,11 +7,17 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '@/components/auth-provider';
 import { EquipoModal } from '@/components/equipo-modal';
 import { NavBar } from '@/components/nav-bar';
-import { deleteEquipment, isAuthenticated, listEquipment, type EquipmentRow } from '@/lib/api';
+import { deleteEquipment, exportEquiposCsv, isAuthenticated, listEquipment, listEquipmentTipos, type EquipmentRow, type EquipmentTipo } from '@/lib/api';
 import { ESTADO_COLORS } from '@/lib/constants';
 
-const TIPOS = ['Portátil', 'Celular', 'Tablet', 'Cámara', 'Audífonos', 'Monitor', 'Impresora', 'Red', 'Accesorio', 'Servidor', 'Otro'];
 const ESTADOS = ['Disponible', 'Asignado', 'En mantenimiento', 'Dañado', 'Prestado', 'En bodega', 'Perdido', 'Dado de baja'];
+const CRITICIDADES = ['Alta', 'Media', 'Baja'];
+const CRITICIDAD_COLORS: Record<string, string> = {
+  Alta: 'bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-300',
+  Media: 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300',
+  Baja: 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300',
+};
+const PAGE_SIZE = 50;
 
 type SortField = 'codigo_interno' | 'serial' | 'tipo' | 'marca_modelo' | 'sede' | 'estado';
 
@@ -32,14 +38,22 @@ export default function EquiposPage() {
   const canWrite = authLoading || hasPermission('equipment:write');
   const canDelete = authLoading || hasPermission('equipment:delete');
   const canViewHojaVida = authLoading || hasPermission('equipment:hoja_vida');
+  const canExport = authLoading || hasPermission('reports:export');
   const [equipos, setEquipos] = useState<EquipmentRow[]>([]);
+  const [tipos, setTipos] = useState<EquipmentTipo[]>([]);
+  const [sedes, setSedes] = useState<string[]>([]);
   const [modalEquipoId, setModalEquipoId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [page, setPage] = useState(0);
+  const [total, setTotal] = useState(0);
+  const [exporting, setExporting] = useState(false);
 
   const [search, setSearch] = useState('');
   const [filterTipo, setFilterTipo] = useState('');
+  const [filterSede, setFilterSede] = useState('');
   const [filterEstado, setFilterEstado] = useState('');
+  const [filterCriticidad, setFilterCriticidad] = useState('');
   const [sortField, setSortField] = useState<SortField>('codigo_interno');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
 
@@ -57,23 +71,49 @@ export default function EquiposPage() {
       router.replace('/login');
       return;
     }
-    fetchEquipos();
+    fetchEquipos(undefined, 0);
+    listEquipment().then((r) => {
+      setSedes(Array.from(new Set(r.items.map((e) => e.sede))).sort((a, b) => a.localeCompare(b, 'es')));
+    }).catch(() => null);
+    listEquipmentTipos().then((r) => setTipos(r.items.filter((t) => t.activo))).catch(() => null);
   }, [router]);
 
-  async function fetchEquipos(params?: { search?: string; tipo?: string; estado?: string }) {
+  async function fetchEquipos(params?: { search?: string; tipo?: string; sede?: string; estado?: string; criticidad?: string }, p = 0) {
     setLoading(true);
     setError('');
     try {
       const response = await listEquipment({
         search: params?.search ?? search,
         tipo: params?.tipo ?? filterTipo,
+        sede: params?.sede ?? filterSede,
         estado: params?.estado ?? filterEstado,
+        criticidad: params?.criticidad ?? filterCriticidad,
+        skip: p * PAGE_SIZE,
+        limit: PAGE_SIZE,
       });
       setEquipos(response.items);
+      setTotal(response.total);
+      setPage(p);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al cargar equipos');
     } finally {
       setLoading(false);
+    }
+  }
+
+  function goPage(p: number) {
+    fetchEquipos(undefined, p);
+  }
+
+  async function handleExportCsv() {
+    setExporting(true);
+    setError('');
+    try {
+      await exportEquiposCsv({ search, tipo: filterTipo, sede: filterSede, estado: filterEstado, criticidad: filterCriticidad });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error al exportar');
+    } finally {
+      setExporting(false);
     }
   }
 
@@ -82,10 +122,12 @@ export default function EquiposPage() {
     fetchEquipos();
   }
 
-  function handleFilterChange(tipo: string, estado: string) {
+  function handleFilterChange(tipo: string, sede: string, estado: string, criticidad: string) {
     setFilterTipo(tipo);
+    setFilterSede(sede);
     setFilterEstado(estado);
-    fetchEquipos({ tipo, estado });
+    setFilterCriticidad(criticidad);
+    fetchEquipos({ tipo, sede, estado, criticidad });
   }
 
   async function handleDelete(equipo: EquipmentRow) {
@@ -109,11 +151,23 @@ export default function EquiposPage() {
             <p className="text-sm uppercase tracking-[0.3em] text-cyan-700 dark:text-cyan-300">Inventario</p>
             <h1 className="mt-1 text-3xl font-bold">Equipos</h1>
           </div>
-          {canWrite ? (
-            <Link href="/equipos/nuevo" className="rounded-md bg-cyan-500 px-4 py-2 font-semibold text-slate-950 hover:bg-cyan-400">
-              + Nuevo equipo
-            </Link>
-          ) : null}
+          <div className="flex items-center gap-2">
+            {canExport ? (
+              <button
+                type="button"
+                onClick={handleExportCsv}
+                disabled={exporting}
+                className="rounded-md bg-slate-200 px-4 py-2 font-semibold text-slate-800 hover:bg-slate-300 disabled:opacity-50 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+              >
+                {exporting ? 'Descargando...' : 'Descargar CSV'}
+              </button>
+            ) : null}
+            {canWrite ? (
+              <Link href="/equipos/nuevo" className="rounded-md bg-cyan-500 px-4 py-2 font-semibold text-slate-950 hover:bg-cyan-400">
+                + Nuevo equipo
+              </Link>
+            ) : null}
+          </div>
         </div>
 
         {/* Filters */}
@@ -131,31 +185,51 @@ export default function EquiposPage() {
 
           <select
             value={filterTipo}
-            onChange={(e) => handleFilterChange(e.target.value, filterEstado)}
+            onChange={(e) => handleFilterChange(e.target.value, filterSede, filterEstado, filterCriticidad)}
             className="min-w-[140px]"
           >
             <option value="">Todos los tipos</option>
-            {TIPOS.map((t) => <option key={t} value={t}>{t}</option>)}
+            {tipos.map((t) => <option key={t.id} value={t.nombre}>{t.nombre}</option>)}
+          </select>
+
+          <select
+            value={filterSede}
+            onChange={(e) => handleFilterChange(filterTipo, e.target.value, filterEstado, filterCriticidad)}
+            className="min-w-[160px]"
+          >
+            <option value="">Todas las sedes</option>
+            {sedes.map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
 
           <select
             value={filterEstado}
-            onChange={(e) => handleFilterChange(filterTipo, e.target.value)}
+            onChange={(e) => handleFilterChange(filterTipo, filterSede, e.target.value, filterCriticidad)}
             className="min-w-[160px]"
           >
             <option value="">Todos los estados</option>
             {ESTADOS.map((e) => <option key={e} value={e}>{e}</option>)}
           </select>
 
-          {(search || filterTipo || filterEstado) && (
+          <select
+            value={filterCriticidad}
+            onChange={(e) => handleFilterChange(filterTipo, filterSede, filterEstado, e.target.value)}
+            className="min-w-[140px]"
+          >
+            <option value="">Toda criticidad</option>
+            {CRITICIDADES.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+
+          {(search || filterTipo || filterSede || filterEstado || filterCriticidad) && (
             <button
               type="button"
               className="bg-slate-100 px-3 py-2 text-slate-700 dark:bg-slate-800 dark:text-slate-300"
               onClick={() => {
                 setSearch('');
                 setFilterTipo('');
+                setFilterSede('');
                 setFilterEstado('');
-                fetchEquipos({ search: '', tipo: '', estado: '' });
+                setFilterCriticidad('');
+                fetchEquipos({ search: '', tipo: '', sede: '', estado: '', criticidad: '' });
               }}
             >
               Limpiar
@@ -190,19 +264,20 @@ export default function EquiposPage() {
                     </button>
                   </th>
                 ))}
+                <th className="hidden lg:table-cell px-4 py-3">Criticidad</th>
                 <th className="px-4 py-3 text-right">Acciones</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-10 text-center text-slate-600 dark:text-slate-400">
+                  <td colSpan={8} className="px-4 py-10 text-center text-slate-600 dark:text-slate-400">
                     Cargando equipos...
                   </td>
                 </tr>
               ) : equipos.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-10 text-center text-slate-600 dark:text-slate-400">
+                  <td colSpan={8} className="px-4 py-10 text-center text-slate-600 dark:text-slate-400">
                     No se encontraron equipos.
                   </td>
                 </tr>
@@ -233,6 +308,11 @@ export default function EquiposPage() {
                     <td className="px-4 py-3">
                       <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${ESTADO_COLORS[equipo.estado] ?? 'bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-300'}`}>
                         {equipo.estado}
+                      </span>
+                    </td>
+                    <td className="hidden lg:table-cell px-4 py-3">
+                      <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${CRITICIDAD_COLORS[equipo.criticidad] ?? CRITICIDAD_COLORS.Media}`}>
+                        {equipo.criticidad}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-right">
@@ -271,7 +351,30 @@ export default function EquiposPage() {
         </div>
 
         {!loading && equipos.length > 0 && (
-          <p className="mt-3 text-right text-xs text-slate-500">{equipos.length} equipo(s)</p>
+          <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
+            <span>{total} equipo(s)</span>
+            {total > PAGE_SIZE && (
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => goPage(page - 1)}
+                  disabled={page === 0}
+                  className="rounded-md bg-slate-100 px-3 py-1 text-slate-700 hover:bg-slate-200 disabled:opacity-50 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                >
+                  ← Anterior
+                </button>
+                <span>Página {page + 1} de {Math.ceil(total / PAGE_SIZE)}</span>
+                <button
+                  type="button"
+                  onClick={() => goPage(page + 1)}
+                  disabled={(page + 1) * PAGE_SIZE >= total}
+                  className="rounded-md bg-slate-100 px-3 py-1 text-slate-700 hover:bg-slate-200 disabled:opacity-50 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                >
+                  Siguiente →
+                </button>
+              </div>
+            )}
+          </div>
         )}
       </main>
     </>

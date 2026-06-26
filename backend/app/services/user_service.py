@@ -80,6 +80,8 @@ class UserService:
         role = Role(
             name=payload.name,
             description=payload.description,
+            home_dashboard=payload.home_dashboard,
+            dominios=payload.dominios,
             permissions=self.repository.get_permissions_by_ids(payload.permission_ids),
         )
         return self.repository.create_role(role)
@@ -97,6 +99,12 @@ class UserService:
 
         if payload.description is not None:
             role.description = payload.description
+
+        if payload.home_dashboard is not None:
+            role.home_dashboard = payload.home_dashboard
+
+        if payload.dominios is not None:
+            role.dominios = payload.dominios
 
         if payload.permission_ids is not None:
             role.permissions = self.repository.get_permissions_by_ids(payload.permission_ids)

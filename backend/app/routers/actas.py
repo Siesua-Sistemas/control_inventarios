@@ -4,9 +4,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.dependencies import require_any_permission
+from app.dependencies import require_any_permission, require_permissions
 from app.repositories.acta_entrega_repository import ActaEntregaRepository
 from app.schemas.acta_entrega import ActaEntregaCreate, ActaEntregaRow, ActaListResponse
+from app.utils.csv_export import csv_response
 
 router = APIRouter(prefix='/api/v1/actas', tags=['actas'])
 
@@ -62,6 +63,42 @@ def list_actas(
 ):
     items, total = repo.list(tipo, sede, bodega_id, empleado_id, desde, hasta, skip, limit)
     return {'total': total, 'items': [_to_row(a) for a in items]}
+
+
+@router.get('/export')
+def export_actas(
+    tipo: str | None = Query(None),
+    sede: str | None = Query(None),
+    bodega_id: int | None = Query(None),
+    empleado_id: int | None = Query(None),
+    desde: date | None = Query(None),
+    hasta: date | None = Query(None),
+    repo: ActaEntregaRepository = Depends(_repo),
+    _user=Depends(require_any_permission('asignaciones:read', 'bodegas:read')),
+    _export=Depends(require_permissions('reports:export')),
+):
+    items, _ = repo.list(tipo, sede, bodega_id, empleado_id, desde, hasta, 0, None)
+    rows = [
+        [
+            a.fecha.isoformat(),
+            a.tipo,
+            a.titulo,
+            a.sede,
+            a.entrega_nombre,
+            a.recibe_nombre,
+            len(a.equipos_snapshot or []),
+            'Sí' if (a.firma_entrega and a.firma_recibe) else 'No',
+            a.observaciones or '',
+            a.created_by.full_name if a.created_by else '',
+        ]
+        for a in items
+    ]
+    return csv_response(
+        'actas_firmadas.csv',
+        ['Fecha', 'Tipo', 'Título', 'Sede', 'Entrega', 'Recibe', 'N° equipos', 'Firmas completas',
+         'Observaciones', 'Registrado por'],
+        rows,
+    )
 
 
 @router.get('/{acta_id}', response_model=ActaEntregaRow)

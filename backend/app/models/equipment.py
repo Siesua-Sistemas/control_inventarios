@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, Column, Date, DateTime, ForeignKey, Integer, JSON, Numeric, String
+from sqlalchemy import Boolean, Column, Date, DateTime, ForeignKey, Integer, JSON, Numeric, String  # noqa: F401
 from sqlalchemy.orm import relationship
 
 from app.database import Base
@@ -33,8 +33,15 @@ class Equipment(Base):
     proveedor = Column(String(160), nullable=True)
     numero_factura = Column(String(80), nullable=True)
     garantia_vence = Column(Date, nullable=True)
+    proximo_preventivo = Column(Date, nullable=True)
 
+    criticidad = Column(String(10), nullable=False, default='Media', server_default='Media')
     observaciones = Column(String(500), nullable=True)
+
+    # Calibración / metrología
+    fecha_calibracion = Column(Date, nullable=True)
+    vencimiento_calibracion = Column(Date, nullable=True)
+    frecuencia_calibracion_meses = Column(Integer, nullable=True)
 
     # Relaciones de ubicación
     bodega_id = Column(Integer, ForeignKey('bodegas.id'), nullable=True)
@@ -46,6 +53,7 @@ class Equipment(Base):
     bodega = relationship('Bodega', lazy='selectin')
     empleado = relationship('Empleado', lazy='selectin')
     photos = relationship('EquipmentPhoto', back_populates='equipment', lazy='select')
+    documentos = relationship('EquipmentDocumento', back_populates='equipment', lazy='select', order_by='EquipmentDocumento.created_at.desc()')
 
     is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)

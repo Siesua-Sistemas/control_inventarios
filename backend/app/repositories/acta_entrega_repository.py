@@ -29,7 +29,7 @@ class ActaEntregaRepository:
         desde: date | None = None,
         hasta: date | None = None,
         skip: int = 0,
-        limit: int = 50,
+        limit: int | None = 50,
     ) -> tuple[list[ActaEntrega], int]:
         q = self.db.query(ActaEntrega)
         if tipo:
@@ -45,5 +45,8 @@ class ActaEntregaRepository:
         if hasta:
             q = q.filter(func.date(ActaEntrega.fecha) <= hasta)
         total = q.count()
-        items = q.order_by(ActaEntrega.fecha.desc()).offset(skip).limit(limit).all()
+        q = q.order_by(ActaEntrega.fecha.desc())
+        if limit is not None:
+            q = q.offset(skip).limit(limit)
+        items = q.all()
         return items, total

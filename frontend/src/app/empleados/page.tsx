@@ -8,6 +8,8 @@ import { useAuth } from '@/components/auth-provider';
 import { NavBar } from '@/components/nav-bar';
 import { deleteEmpleado, isAuthenticated, listEmpleados, type EmpleadoRow } from '@/lib/api';
 
+const PAGE_SIZE = 50;
+
 export default function EmpleadosPage() {
   const router = useRouter();
   const { loading: authLoading, hasPermission } = useAuth();
@@ -16,19 +18,27 @@ export default function EmpleadosPage() {
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [page, setPage] = useState(0);
+  const [total, setTotal] = useState(0);
 
   useEffect(() => {
     if (!isAuthenticated()) { router.replace('/login'); return; }
     fetch_();
   }, [router]);
 
-  async function fetch_(q?: string) {
+  async function fetch_(q?: string, p = 0) {
     setLoading(true); setError('');
     try {
-      const r = await listEmpleados(q ?? search);
+      const r = await listEmpleados({ search: q ?? search, skip: p * PAGE_SIZE, limit: PAGE_SIZE });
       setEmpleados(r.items);
+      setTotal(r.total);
+      setPage(p);
     } catch (e) { setError(e instanceof Error ? e.message : 'Error'); }
     finally { setLoading(false); }
+  }
+
+  function goPage(p: number) {
+    fetch_(undefined, p);
   }
 
   async function handleDelete(e: EmpleadoRow) {
@@ -94,12 +104,20 @@ export default function EmpleadosPage() {
                   <td className="px-4 py-3 text-slate-700 dark:text-slate-300">{emp.sede ?? '—'}</td>
                   <td className="px-4 py-3 text-right">
                     {canWrite ? (
-                      <button
-                        onClick={() => handleDelete(emp)}
-                        className="rounded-md bg-red-100 px-3 py-1 text-xs text-red-700 hover:bg-red-200 dark:bg-red-500/10 dark:text-red-400 dark:hover:bg-red-500/20"
-                      >
-                        Eliminar
-                      </button>
+                      <div className="flex justify-end gap-2">
+                        <Link
+                          href={`/empleados/${emp.id}/editar`}
+                          className="rounded-md bg-slate-200 px-3 py-1 text-xs text-slate-800 hover:bg-slate-300 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600"
+                        >
+                          Editar
+                        </Link>
+                        <button
+                          onClick={() => handleDelete(emp)}
+                          className="rounded-md bg-red-100 px-3 py-1 text-xs text-red-700 hover:bg-red-200 dark:bg-red-500/10 dark:text-red-400 dark:hover:bg-red-500/20"
+                        >
+                          Eliminar
+                        </button>
+                      </div>
                     ) : null}
                   </td>
                 </tr>
@@ -107,7 +125,32 @@ export default function EmpleadosPage() {
             </tbody>
           </table>
         </div>
-        {!loading && <p className="mt-2 text-right text-xs text-slate-500">{empleados.length} empleado(s)</p>}
+        {!loading && empleados.length > 0 && (
+          <div className="mt-2 flex items-center justify-between text-xs text-slate-500">
+            <span>{total} empleado(s)</span>
+            {total > PAGE_SIZE && (
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => goPage(page - 1)}
+                  disabled={page === 0}
+                  className="rounded-md bg-slate-100 px-3 py-1 text-slate-700 hover:bg-slate-200 disabled:opacity-50 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                >
+                  ← Anterior
+                </button>
+                <span>Página {page + 1} de {Math.ceil(total / PAGE_SIZE)}</span>
+                <button
+                  type="button"
+                  onClick={() => goPage(page + 1)}
+                  disabled={(page + 1) * PAGE_SIZE >= total}
+                  className="rounded-md bg-slate-100 px-3 py-1 text-slate-700 hover:bg-slate-200 disabled:opacity-50 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                >
+                  Siguiente →
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </main>
     </>
   );

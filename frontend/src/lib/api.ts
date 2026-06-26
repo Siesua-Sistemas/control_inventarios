@@ -2,7 +2,13 @@ type ApiError = {
   detail?: string;
 };
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+export const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
+export function storageUrl(path: string | null | undefined): string | null {
+  if (!path) return null;
+  if (path.startsWith('http')) return path;
+  return `${API_BASE}${path}`;
+}
 
 function getStoredToken() {
   return typeof window !== 'undefined' ? localStorage.getItem('access_token') : null;
@@ -77,6 +83,25 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}): Pr
   }
 
   return text ? (JSON.parse(text) as T) : ({} as T);
+}
+
+async function downloadFile(path: string, filename: string): Promise<void> {
+  const token = getStoredToken();
+  const response = await fetch(`${API_BASE}${path}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!response.ok) {
+    throw new Error('Error al descargar el archivo');
+  }
+  const blob = await response.blob();
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.URL.revokeObjectURL(url);
 }
 
 export async function loginUser(email: string, password: string) {
@@ -156,6 +181,7 @@ export interface EquipmentRow {
   sede: string;
   ubicacion: string | null;
   estado: string;
+  criticidad: string;
   specs: Record<string, unknown> | null;
   fecha_compra: string | null;
   valor: string | null;
@@ -163,6 +189,9 @@ export interface EquipmentRow {
   numero_factura: string | null;
   garantia_vence: string | null;
   observaciones: string | null;
+  fecha_calibracion: string | null;
+  vencimiento_calibracion: string | null;
+  frecuencia_calibracion_meses: number | null;
   bodega_id: number | null;
   empleado_id: number | null;
   empleado_nombre?: string | null;
@@ -182,6 +211,9 @@ export interface EquipmentFilters {
   tipo?: string;
   sede?: string;
   estado?: string;
+  criticidad?: string;
+  skip?: number;
+  limit?: number;
 }
 
 export async function listEquipment(filters: EquipmentFilters = {}): Promise<EquipmentListResponse> {
@@ -190,8 +222,22 @@ export async function listEquipment(filters: EquipmentFilters = {}): Promise<Equ
   if (filters.tipo) params.set('tipo', filters.tipo);
   if (filters.sede) params.set('sede', filters.sede);
   if (filters.estado) params.set('estado', filters.estado);
+  if (filters.criticidad) params.set('criticidad', filters.criticidad);
+  if (filters.skip) params.set('skip', String(filters.skip));
+  if (filters.limit) params.set('limit', String(filters.limit));
   const query = params.toString() ? `?${params.toString()}` : '';
   return apiRequest<EquipmentListResponse>(`/api/v1/equipos${query}`);
+}
+
+export async function exportEquiposCsv(filters: Omit<EquipmentFilters, 'skip' | 'limit'> = {}): Promise<void> {
+  const params = new URLSearchParams();
+  if (filters.search) params.set('search', filters.search);
+  if (filters.tipo) params.set('tipo', filters.tipo);
+  if (filters.sede) params.set('sede', filters.sede);
+  if (filters.estado) params.set('estado', filters.estado);
+  if (filters.criticidad) params.set('criticidad', filters.criticidad);
+  const query = params.toString() ? `?${params.toString()}` : '';
+  await downloadFile(`/api/v1/equipos/export${query}`, 'inventario_equipos.csv');
 }
 
 export async function getEquipment(id: number): Promise<EquipmentRow> {
@@ -242,7 +288,9 @@ export interface BodegaInventario {
 }
 
 export async function listBodegas(sede?: string): Promise<{ total: number; items: BodegaRow[] }> {
-  const q = sede ? `?sede=${encodeURIComponent(sede)}` : '';
+  const params = new URLSearchParams();
+  if (sede) params.set('sede', sede);
+  const q = params.toString() ? `?${params.toString()}` : '';
   return apiRequest(`/api/v1/bodegas${q}`);
 }
 
@@ -270,18 +318,39 @@ export interface EmpleadoRow {
   sede: string | null;
   email: string | null;
   telefono: string | null;
+  en_jornada: boolean;
+  sedes_jornada_ids: number[];
   nombre_completo: string;
   is_active: boolean;
   created_at: string;
 }
 
-export async function listEmpleados(search?: string): Promise<{ total: number; items: EmpleadoRow[] }> {
-  const q = search ? `?search=${encodeURIComponent(search)}` : '';
-  return apiRequest(`/api/v1/empleados${q}`);
+export interface EmpleadoFilters {
+  search?: string;
+  sede?: string;
+  skip?: number;
+  limit?: number;
+}
+
+export async function listEmpleados(filters: EmpleadoFilters = {}): Promise<{ total: number; items: EmpleadoRow[] }> {
+  const p = new URLSearchParams();
+  if (filters.search) p.set('search', filters.search);
+  if (filters.sede) p.set('sede', filters.sede);
+  if (filters.skip) p.set('skip', String(filters.skip));
+  if (filters.limit) p.set('limit', String(filters.limit));
+  return apiRequest(`/api/v1/empleados${p.toString() ? '?' + p.toString() : ''}`);
 }
 
 export async function createEmpleado(data: Omit<EmpleadoRow, 'id' | 'nombre_completo' | 'is_active' | 'created_at'>): Promise<EmpleadoRow> {
   return apiRequest('/api/v1/empleados', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+}
+
+export async function getEmpleado(id: number): Promise<EmpleadoRow> {
+  return apiRequest(`/api/v1/empleados/${id}`);
+}
+
+export async function updateEmpleado(id: number, data: Omit<EmpleadoRow, 'id' | 'nombre_completo' | 'is_active' | 'created_at'>): Promise<EmpleadoRow> {
+  return apiRequest(`/api/v1/empleados/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
 }
 
 export async function deleteEmpleado(id: number): Promise<void> {
@@ -330,7 +399,7 @@ export async function trasladar(data: { equipment_id: number; bodega_destino_id:
 }
 
 export async function listAsignacionesActivas(): Promise<{ total: number; items: AsignacionRow[] }> {
-  return apiRequest('/api/v1/asignaciones/activas');
+  return apiRequest(`/api/v1/asignaciones/activas`);
 }
 
 export async function listHistorial(filters: { equipment_id?: number; empleado_id?: number; tipo?: string; desde?: string; hasta?: string; skip?: number; limit?: number } = {}): Promise<{ total: number; items: AsignacionRow[] }> {
@@ -345,6 +414,16 @@ export async function listHistorial(filters: { equipment_id?: number; empleado_i
   return apiRequest(`/api/v1/asignaciones/historial${p.toString() ? '?' + p.toString() : ''}`);
 }
 
+export async function exportHistorialCsv(filters: { equipment_id?: number; empleado_id?: number; tipo?: string; desde?: string; hasta?: string } = {}): Promise<void> {
+  const p = new URLSearchParams();
+  if (filters.equipment_id) p.set('equipment_id', String(filters.equipment_id));
+  if (filters.empleado_id) p.set('empleado_id', String(filters.empleado_id));
+  if (filters.tipo) p.set('tipo', filters.tipo);
+  if (filters.desde) p.set('desde', filters.desde);
+  if (filters.hasta) p.set('hasta', filters.hasta);
+  await downloadFile(`/api/v1/asignaciones/historial/export${p.toString() ? '?' + p.toString() : ''}`, 'historial_movimientos.csv');
+}
+
 // ── Equipment Hoja de Vida ────────────────────────────────────────────────────
 
 export interface SpecField {
@@ -355,6 +434,52 @@ export interface SpecField {
   min?: number;
   max?: number;
   placeholder?: string;
+}
+
+export interface EquipmentTipo {
+  id: number;
+  nombre: string;
+  es_periferico: boolean;
+  activo: boolean;
+  orden: number;
+  specs: SpecField[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EquipmentTipoPayload {
+  nombre: string;
+  es_periferico?: boolean;
+  activo?: boolean;
+  orden?: number;
+}
+
+export async function listEquipmentTipos(): Promise<{ total: number; items: EquipmentTipo[] }> {
+  return apiRequest('/api/v1/equipos/tipos');
+}
+
+export async function createEquipmentTipo(data: EquipmentTipoPayload): Promise<EquipmentTipo> {
+  return apiRequest('/api/v1/equipos/tipos', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateEquipmentTipo(id: number, data: Partial<EquipmentTipoPayload>): Promise<EquipmentTipo> {
+  return apiRequest(`/api/v1/equipos/tipos/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateEquipmentTipoSpecs(id: number, specs: SpecField[]): Promise<EquipmentTipo> {
+  return apiRequest(`/api/v1/equipos/tipos/${id}/specs`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ specs }),
+  });
 }
 
 export interface EquipmentBrief {
@@ -375,12 +500,23 @@ export interface EquipmentPhotoOut {
   created_at: string;
 }
 
+export interface EquipmentDocumentoOut {
+  id: number;
+  equipment_id: number;
+  filename: string;
+  nombre: string;
+  tipo_doc: string;
+  url: string;
+  created_at: string;
+}
+
 export interface EquipmentProfile {
   equipment: EquipmentRow;
   specs_template: SpecField[];
   parent: EquipmentBrief | null;
   children: EquipmentBrief[];
   photos: EquipmentPhotoOut[];
+  documentos: EquipmentDocumentoOut[];
 }
 
 export async function getEquipmentProfile(id: number): Promise<EquipmentProfile> {
@@ -398,6 +534,26 @@ export async function updateEquipmentSpecs(id: number, specs: Record<string, unk
 export async function setEquipmentParent(id: number, parentId: number | null): Promise<EquipmentRow> {
   const qs = parentId !== null ? `?parent_id=${parentId}` : '';
   return apiRequest<EquipmentRow>(`/api/v1/equipos/${id}/parent${qs}`, { method: 'PATCH' });
+}
+
+export async function uploadEquipmentDocumento(
+  equipmentId: number,
+  file: File,
+  nombre: string,
+  tipo_doc: string,
+): Promise<EquipmentDocumentoOut> {
+  const fd = new FormData();
+  fd.append('file', file);
+  fd.append('nombre', nombre);
+  fd.append('tipo_doc', tipo_doc);
+  return apiRequest<EquipmentDocumentoOut>(`/api/v1/equipos/${equipmentId}/documentos`, {
+    method: 'POST',
+    body: fd,
+  });
+}
+
+export async function deleteEquipmentDocumento(equipmentId: number, docId: number): Promise<void> {
+  await apiRequest<void>(`/api/v1/equipos/${equipmentId}/documentos/${docId}`, { method: 'DELETE' });
 }
 
 // ── Actas de Entrega ──────────────────────────────────────────────────────────
@@ -474,6 +630,24 @@ export async function listActas(filters: {
   return apiRequest(`/api/v1/actas${p.toString() ? '?' + p.toString() : ''}`);
 }
 
+export async function exportActasCsv(filters: {
+  tipo?: string;
+  sede?: string;
+  bodega_id?: number;
+  empleado_id?: number;
+  desde?: string;
+  hasta?: string;
+} = {}): Promise<void> {
+  const p = new URLSearchParams();
+  if (filters.tipo) p.set('tipo', filters.tipo);
+  if (filters.sede) p.set('sede', filters.sede);
+  if (filters.bodega_id) p.set('bodega_id', String(filters.bodega_id));
+  if (filters.empleado_id) p.set('empleado_id', String(filters.empleado_id));
+  if (filters.desde) p.set('desde', filters.desde);
+  if (filters.hasta) p.set('hasta', filters.hasta);
+  await downloadFile(`/api/v1/actas/export${p.toString() ? '?' + p.toString() : ''}`, 'actas_firmadas.csv');
+}
+
 export async function getActa(id: number): Promise<ActaEntregaRow> {
   return apiRequest(`/api/v1/actas/${id}`);
 }
@@ -498,27 +672,72 @@ export async function deleteEquipmentPhoto(equipmentId: number, photoId: number)
   await apiRequest<void>(`/api/v1/equipos/${equipmentId}/fotos/${photoId}`, { method: 'DELETE' });
 }
 
-export async function getSpecsTemplate(tipo: string): Promise<{ tipo: string; fields: SpecField[] }> {
-  return apiRequest(`/api/v1/equipos/specs-template?tipo=${encodeURIComponent(tipo)}`);
+// ── Mantenimientos ────────────────────────────────────────────────────────────
+
+export interface MantenimientoPhotoOut {
+  id: number;
+  mantenimiento_id: number;
+  filename: string;
+  url: string;
+  created_at: string;
 }
 
-// ── Mantenimientos ────────────────────────────────────────────────────────────
+export interface PasoRow {
+  id: number;
+  mantenimiento_id: number;
+  orden: number;
+  descripcion: string;
+  completado: boolean;
+  completado_en: string | null;
+}
+
+export interface PlantillaPasoRow {
+  id: number;
+  tipo_equipo: string;
+  tipo_mantenimiento: string;
+  descripcion: string;
+  orden: number;
+}
 
 export interface MantenimientoRow {
   id: number;
+  numero_ot: string | null;
   equipment_id: number;
   equipment_codigo: string;
   equipment_marca: string;
   equipment_modelo: string;
+  equipment_tipo: string;
+  equipment_sede: string;
   tipo: string;
   fecha: string;
   tecnico: string | null;
+  tecnico_id: number | null;
+  tecnico_nombre: string | null;
   descripcion: string;
   costo: string | null;
   observaciones: string | null;
   proximo_mantenimiento: string | null;
+  estado: string;
+  prioridad: string;
+  firma_tecnico: string | null;
+  firma_supervisor: string | null;
+  aprobado_por_nombre: string | null;
+  aprobado_en: string | null;
+  comentario_aprobacion: string | null;
   created_by_nombre: string;
   created_at: string;
+  fotos: MantenimientoPhotoOut[];
+  pasos: PasoRow[];
+}
+
+export interface UserBasic {
+  id: number;
+  full_name: string;
+  email: string;
+}
+
+export async function listUsersBasic(): Promise<UserBasic[]> {
+  return apiRequest('/api/v1/users/basico');
 }
 
 export interface MantenimientoPayload {
@@ -526,14 +745,42 @@ export interface MantenimientoPayload {
   tipo: string;
   fecha: string;
   tecnico?: string;
+  tecnico_id?: number | null;
   descripcion: string;
+  prioridad?: string;
   costo?: number;
   observaciones?: string;
   proximo_mantenimiento?: string;
+  estado?: string;
 }
 
-export async function listMantenimientos(equipment_id: number): Promise<{ total: number; items: MantenimientoRow[] }> {
-  return apiRequest(`/api/v1/mantenimientos?equipment_id=${equipment_id}`);
+export interface MantenimientoFilters {
+  equipment_id?: number;
+  sede?: string;
+  tipo?: string;
+  tipo_equipo?: string;
+  estado_vencimiento?: 'vencido' | 'proximo' | 'al_dia';
+  proximo_desde?: string;
+  proximo_hasta?: string;
+  estado?: string;
+  skip?: number;
+  limit?: number;
+}
+
+export async function listMantenimientos(filters: MantenimientoFilters | number = {}): Promise<{ total: number; items: MantenimientoRow[] }> {
+  const f: MantenimientoFilters = typeof filters === 'number' ? { equipment_id: filters } : filters;
+  const p = new URLSearchParams();
+  if (f.equipment_id) p.set('equipment_id', String(f.equipment_id));
+  if (f.sede) p.set('sede', f.sede);
+  if (f.tipo) p.set('tipo', f.tipo);
+  if (f.tipo_equipo) p.set('tipo_equipo', f.tipo_equipo);
+  if (f.estado_vencimiento) p.set('estado_vencimiento', f.estado_vencimiento);
+  if (f.proximo_desde) p.set('proximo_desde', f.proximo_desde);
+  if (f.proximo_hasta) p.set('proximo_hasta', f.proximo_hasta);
+  if (f.estado) p.set('estado', f.estado);
+  if (f.skip) p.set('skip', String(f.skip));
+  if (f.limit) p.set('limit', String(f.limit));
+  return apiRequest(`/api/v1/mantenimientos${p.toString() ? '?' + p.toString() : ''}`);
 }
 
 export async function createMantenimiento(data: MantenimientoPayload): Promise<MantenimientoRow> {
@@ -552,8 +799,230 @@ export async function updateMantenimiento(id: number, data: Partial<Mantenimient
   });
 }
 
+export async function patchMantenimiento(
+  id: number,
+  data: { estado?: string; proximo_mantenimiento?: string },
+): Promise<MantenimientoRow> {
+  return apiRequest(`/api/v1/mantenimientos/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+}
+
 export async function deleteMantenimiento(id: number): Promise<void> {
   await apiRequest<void>(`/api/v1/mantenimientos/${id}`, { method: 'DELETE' });
+}
+
+export async function uploadMantenimientoPhoto(id: number, file: File): Promise<MantenimientoPhotoOut> {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null;
+  const formData = new FormData();
+  formData.append('file', file);
+  const response = await fetch(`${API_BASE}/api/v1/mantenimientos/${id}/fotos`, {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: formData,
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error((err as ApiError).detail || 'Error al subir foto');
+  }
+  return response.json();
+}
+
+export async function deleteMantenimientoPhoto(mantenimientoId: number, photoId: number): Promise<void> {
+  await apiRequest<void>(`/api/v1/mantenimientos/${mantenimientoId}/fotos/${photoId}`, { method: 'DELETE' });
+}
+
+// ── Mantenimientos: pasos (checklist) ─────────────────────────────────────────
+
+export async function addPaso(mantenimientoId: number, descripcion: string, orden?: number): Promise<PasoRow> {
+  return apiRequest<PasoRow>(`/api/v1/mantenimientos/${mantenimientoId}/pasos`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ descripcion, orden: orden ?? 0 }),
+  });
+}
+
+export async function updatePaso(mantenimientoId: number, pasoId: number, data: { completado?: boolean; descripcion?: string }): Promise<PasoRow> {
+  return apiRequest<PasoRow>(`/api/v1/mantenimientos/${mantenimientoId}/pasos/${pasoId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deletePaso(mantenimientoId: number, pasoId: number): Promise<void> {
+  await apiRequest<void>(`/api/v1/mantenimientos/${mantenimientoId}/pasos/${pasoId}`, { method: 'DELETE' });
+}
+
+export async function firmarTecnico(mantenimientoId: number, firma: string): Promise<MantenimientoRow> {
+  return apiRequest<MantenimientoRow>(`/api/v1/mantenimientos/${mantenimientoId}/firma-tecnico`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ firma_tecnico: firma }),
+  });
+}
+
+export async function aprobarMantenimiento(
+  mantenimientoId: number,
+  data: { aprobado: boolean; comentario?: string; firma_supervisor?: string },
+): Promise<MantenimientoRow> {
+  return apiRequest<MantenimientoRow>(`/api/v1/mantenimientos/${mantenimientoId}/aprobar`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function iniciarMantenimiento(mantenimientoId: number): Promise<MantenimientoRow> {
+  return apiRequest<MantenimientoRow>(`/api/v1/mantenimientos/${mantenimientoId}/iniciar`, {
+    method: 'POST',
+  });
+}
+
+export async function getMisOt(): Promise<{ total: number; items: MantenimientoRow[] }> {
+  return apiRequest('/api/v1/mantenimientos/mis-ot');
+}
+
+export async function getMisTickets(): Promise<{ total: number; items: TicketOut[] }> {
+  return apiRequest('/api/v1/tickets/mis-tickets');
+}
+
+// ── Mantenimientos: plantillas ────────────────────────────────────────────────
+
+export async function listPlantillas(filters: { tipo_equipo?: string; tipo_mantenimiento?: string } = {}): Promise<PlantillaPasoRow[]> {
+  const p = new URLSearchParams();
+  if (filters.tipo_equipo) p.set('tipo_equipo', filters.tipo_equipo);
+  if (filters.tipo_mantenimiento) p.set('tipo_mantenimiento', filters.tipo_mantenimiento);
+  const qs = p.toString();
+  return apiRequest<PlantillaPasoRow[]>(`/api/v1/mantenimientos/plantillas${qs ? '?' + qs : ''}`);
+}
+
+export async function createPlantilla(data: { tipo_equipo: string; tipo_mantenimiento: string; descripcion: string; orden?: number }): Promise<PlantillaPasoRow> {
+  return apiRequest<PlantillaPasoRow>('/api/v1/mantenimientos/plantillas', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deletePlantilla(id: number): Promise<void> {
+  await apiRequest<void>(`/api/v1/mantenimientos/plantillas/${id}`, { method: 'DELETE' });
+}
+
+// ── Mantenimientos: configuración ────────────────────────────────────────────
+
+export interface MantenimientoConfigRow {
+  id: number;
+  tipo_equipo: string;
+  tiene_mantenimiento: boolean;
+  frecuencia_meses: number;
+  descripcion: string | null;
+  updated_at: string;
+}
+
+export async function listMantenimientoConfig(): Promise<{ total: number; items: MantenimientoConfigRow[] }> {
+  return apiRequest('/api/v1/mantenimientos/config');
+}
+
+export async function updateMantenimientoConfig(
+  tipoEquipo: string,
+  data: { tiene_mantenimiento?: boolean; frecuencia_meses?: number; descripcion?: string }
+): Promise<MantenimientoConfigRow> {
+  return apiRequest(`/api/v1/mantenimientos/config/${encodeURIComponent(tipoEquipo)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+}
+
+// ── Equipment: próximos preventivos automáticos ──────────────────────────────
+
+export interface EquipmentProximoPreventivoRow {
+  equipment_id: number;
+  equipment_codigo: string;
+  equipment_marca: string;
+  equipment_modelo: string;
+  equipment_tipo: string;
+  equipment_sede: string;
+  proximo_preventivo: string;
+  garantia_vence: string | null;
+  fecha_compra: string | null;
+  frecuencia_meses: number | null;
+}
+
+export async function listEquiposProximosPreventivos(
+  desde?: string,
+  hasta?: string,
+): Promise<{ total: number; items: EquipmentProximoPreventivoRow[] }> {
+  const p = new URLSearchParams();
+  if (desde) p.set('desde', desde);
+  if (hasta) p.set('hasta', hasta);
+  const qs = p.toString();
+  return apiRequest(`/api/v1/equipos/proximos-preventivos${qs ? '?' + qs : ''}`);
+}
+
+// ── Mantenimientos: dashboard ────────────────────────────────────────────────
+
+export interface PorSedeEstado {
+  sede: string;
+  total: number;
+  por_estado: Record<string, number>;
+}
+
+export interface AlertaItem {
+  tipo: string;
+  severidad: 'alta' | 'media' | 'baja';
+  mensaje: string;
+  equipment_id: number;
+  equipment_codigo: string;
+  sede: string;
+  fecha_referencia: string | null;
+  dias: number | null;
+}
+
+export interface MantenimientosDashboard {
+  vencidos: number;
+  proximos_30_dias: number;
+  garantias_por_vencer_60_dias: number;
+  calibraciones_vencidas: number;
+  calibraciones_proximas_30_dias: number;
+  costo_mes_actual: string;
+  costo_anio_actual: string;
+  por_sede: PorSedeEstado[];
+  alertas: AlertaItem[];
+}
+
+export async function getMantenimientosDashboard(): Promise<MantenimientosDashboard> {
+  return apiRequest(`/api/v1/mantenimientos/dashboard`);
+}
+
+// ── Calibraciones ─────────────────────────────────────────────────────────────
+
+export interface CalibracionItem {
+  equipment_id: number;
+  equipment_codigo: string;
+  equipment_marca: string;
+  equipment_modelo: string;
+  equipment_tipo: string;
+  equipment_sede: string;
+  criticidad: string;
+  fecha_calibracion: string | null;
+  vencimiento_calibracion: string;
+  frecuencia_calibracion_meses: number | null;
+  dias_para_vencer: number;
+}
+
+export async function listCalibraciones(filters: {
+  vencidas?: boolean;
+  proximas_dias?: number;
+} = {}): Promise<{ total: number; items: CalibracionItem[] }> {
+  const p = new URLSearchParams();
+  if (filters.vencidas !== undefined) p.set('vencidas', String(filters.vencidas));
+  if (filters.proximas_dias !== undefined) p.set('proximas_dias', String(filters.proximas_dias));
+  const qs = p.toString();
+  return apiRequest(`/api/v1/equipos/calibraciones${qs ? '?' + qs : ''}`);
 }
 
 // ── Dashboard ─────────────────────────────────────────────────────────────────
@@ -568,7 +1037,40 @@ export interface DashboardStats {
 }
 
 export async function getDashboardStats(): Promise<DashboardStats> {
-  return apiRequest('/api/v1/dashboard');
+  return apiRequest(`/api/v1/dashboard`);
+}
+
+export interface GarantiaAlertaItem {
+  equipment_id: number;
+  equipment_codigo: string;
+  equipment_marca: string;
+  equipment_modelo: string;
+  sede: string;
+  garantia_vence: string;
+  dias: number;
+}
+
+export interface EquipoRecienteItem {
+  id: number;
+  codigo_interno: string;
+  tipo: string;
+  marca: string;
+  modelo: string;
+  sede: string;
+  estado: string;
+  created_at: string;
+}
+
+export interface InventarioDashboard {
+  total_equipos: number;
+  por_tipo: Record<string, number>;
+  por_estado: Record<string, number>;
+  garantias_por_vencer: GarantiaAlertaItem[];
+  altas_recientes: EquipoRecienteItem[];
+}
+
+export async function getInventarioDashboard(): Promise<InventarioDashboard> {
+  return apiRequest(`/api/v1/dashboard/inventario`);
 }
 
 // ── Usuarios, roles y permisos ────────────────────────────────────────────────
@@ -584,6 +1086,8 @@ export interface RoleItem {
   id: number;
   name: string;
   description: string | null;
+  home_dashboard: string;
+  dominios: string[];
   permissions: PermissionItem[];
 }
 
@@ -602,6 +1106,8 @@ export interface MeResponse {
   full_name: string;
   roles: string[];
   permissions: string[];
+  home_dashboard: string;
+  dominios: string[];
 }
 
 export async function getMe(): Promise<MeResponse> {
@@ -643,6 +1149,8 @@ export async function listPermissions(): Promise<PermissionItem[]> {
 export interface RolePayload {
   name: string;
   description?: string | null;
+  home_dashboard?: string;
+  dominios?: string[];
   permission_ids: number[];
 }
 
@@ -660,4 +1168,632 @@ export async function updateRole(id: number, data: Partial<RolePayload>): Promis
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
+}
+
+// ── Credenciales ─────────────────────────────────────────────────────────────
+
+export interface CredencialRow {
+  id: number;
+  tipo: string;
+  nombre: string;
+  equipment_id: number | null;
+  equipment_codigo?: string | null;
+  equipment_marca?: string | null;
+  equipment_modelo?: string | null;
+  usuario: string | null;
+  url: string | null;
+  notas: string | null;
+  created_by_nombre: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CredencialListResponse {
+  total: number;
+  items: CredencialRow[];
+}
+
+export interface CredencialFilters {
+  tipo?: string;
+  equipment_id?: number;
+  search?: string;
+  skip?: number;
+  limit?: number;
+}
+
+export interface CredencialCreatePayload {
+  tipo: string;
+  nombre: string;
+  equipment_id?: number | null;
+  usuario?: string | null;
+  password: string;
+  url?: string | null;
+  notas?: string | null;
+}
+
+export type CredencialUpdatePayload = Partial<Omit<CredencialCreatePayload, 'tipo' | 'password'>> & {
+  password?: string;
+};
+
+export async function listCredenciales(filters: CredencialFilters = {}): Promise<CredencialListResponse> {
+  const params = new URLSearchParams();
+  if (filters.tipo) params.set('tipo', filters.tipo);
+  if (filters.equipment_id) params.set('equipment_id', String(filters.equipment_id));
+  if (filters.search) params.set('search', filters.search);
+  if (filters.skip) params.set('skip', String(filters.skip));
+  if (filters.limit) params.set('limit', String(filters.limit));
+  const query = params.toString() ? `?${params.toString()}` : '';
+  return apiRequest<CredencialListResponse>(`/api/v1/credenciales${query}`);
+}
+
+export async function getCredencial(id: number): Promise<CredencialRow> {
+  return apiRequest<CredencialRow>(`/api/v1/credenciales/${id}`);
+}
+
+export async function createCredencial(data: CredencialCreatePayload): Promise<CredencialRow> {
+  return apiRequest<CredencialRow>('/api/v1/credenciales', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateCredencial(id: number, data: CredencialUpdatePayload): Promise<CredencialRow> {
+  return apiRequest<CredencialRow>(`/api/v1/credenciales/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteCredencial(id: number): Promise<void> {
+  await apiRequest<void>(`/api/v1/credenciales/${id}`, { method: 'DELETE' });
+}
+
+export async function revealCredencialPassword(id: number): Promise<string> {
+  const r = await apiRequest<{ password: string }>(`/api/v1/credenciales/${id}/password`);
+  return r.password;
+}
+
+// ── Portal del Colaborador (sin autenticación) ────────────────────────────────
+
+export interface EmpleadoBrief {
+  nombres: string;
+  apellidos: string;
+  sede: string;
+  cargo: string | null;
+}
+
+export interface RedWifiOut {
+  id: number;
+  sede: string;
+  nombre_red: string;
+  tipo_red: string | null;
+  contrasena: string;
+  descripcion: string | null;
+}
+
+export interface EquipoBrief {
+  id: number;
+  codigo_interno: string;
+  tipo: string;
+  marca: string;
+  modelo: string;
+  estado: string;
+  bodega_nombre: string | null;
+}
+
+export interface VerificarResponse {
+  empleado: EmpleadoBrief;
+  redes_wifi: RedWifiOut[];
+  equipos_asignados: EquipoBrief[];
+  equipos_bodega: EquipoBrief[];
+}
+
+export interface TicketPublicoCreate {
+  documento: string;
+  categoria: string;
+  tipo_solicitud: string;
+  asunto: string;
+  descripcion: string;
+  prioridad: string;
+  equipment_ids: number[];
+}
+
+export interface TicketPublicoOut {
+  id: number;
+  numero: string;
+  asunto: string;
+  estado: string;
+  created_at: string;
+}
+
+export interface TicketPortalOut {
+  id: number;
+  numero: string;
+  asunto: string;
+  categoria: string;
+  tipo_solicitud: string;
+  estado: string;
+  prioridad: string;
+  asignado_a_nombre: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TicketImagenOut {
+  id: number;
+  url: string;
+}
+
+export interface ComentarioPortalOut {
+  id: number;
+  autor_nombre: string;
+  contenido: string;
+  created_at: string;
+}
+
+export interface TicketPortalDetailOut {
+  id: number;
+  numero: string;
+  asunto: string;
+  descripcion: string;
+  categoria: string;
+  tipo_solicitud: string;
+  estado: string;
+  prioridad: string;
+  asignado_a_nombre: string | null;
+  resolucion: string | null;
+  created_at: string;
+  updated_at: string;
+  comentarios: ComentarioPortalOut[];
+  imagenes: TicketImagenOut[];
+}
+
+export async function verificarEmpleado(documento: string): Promise<VerificarResponse> {
+  const r = await fetch(`${API_BASE}/api/v1/portal/verificar`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ documento }),
+  });
+  if (!r.ok) {
+    const err: ApiError = await r.json().catch(() => ({}));
+    throw new Error(err.detail ?? 'Error al verificar');
+  }
+  return r.json();
+}
+
+export async function logWifiVista(documento: string, wifi_id: number): Promise<void> {
+  await fetch(`${API_BASE}/api/v1/portal/wifi-vista?wifi_id=${wifi_id}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ documento }),
+  });
+}
+
+export async function getTicketsPortal(documento: string): Promise<TicketPortalOut[]> {
+  const r = await fetch(`${API_BASE}/api/v1/portal/mis-tickets/${encodeURIComponent(documento)}`);
+  if (!r.ok) return [];
+  return r.json();
+}
+
+export async function getTicketPortalDetail(ticketId: number): Promise<TicketPortalDetailOut> {
+  const r = await fetch(`${API_BASE}/api/v1/portal/ticket/${ticketId}`);
+  if (!r.ok) throw new Error('Ticket no encontrado');
+  return r.json();
+}
+
+export async function uploadImagenesPortal(
+  ticketId: number,
+  documento: string,
+  files: File[],
+): Promise<{ uploaded: number; total: number }> {
+  const form = new FormData();
+  form.append('documento', documento);
+  files.forEach((f) => form.append('files', f));
+  const r = await fetch(`${API_BASE}/api/v1/portal/ticket/${ticketId}/imagenes`, {
+    method: 'POST',
+    body: form,
+  });
+  if (!r.ok) {
+    const err: ApiError = await r.json().catch(() => ({}));
+    throw new Error(err.detail ?? 'Error al subir imágenes');
+  }
+  return r.json();
+}
+
+export async function uploadImagenesTicket(
+  ticketId: number,
+  files: File[],
+): Promise<{ uploaded: number; total: number }> {
+  const token = getStoredToken();
+  const form = new FormData();
+  files.forEach((f) => form.append('files', f));
+  const r = await fetch(`${API_BASE}/api/v1/tickets/${ticketId}/imagenes`, {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: form,
+  });
+  if (!r.ok) {
+    const err: ApiError = await r.json().catch(() => ({}));
+    throw new Error(err.detail ?? 'Error al subir imágenes');
+  }
+  return r.json();
+}
+
+export async function addComentarioPortal(
+  ticketId: number,
+  documento: string,
+  contenido: string,
+): Promise<ComentarioPortalOut> {
+  const r = await fetch(`${API_BASE}/api/v1/portal/ticket/${ticketId}/comentario`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ documento, contenido }),
+  });
+  if (!r.ok) {
+    const err: ApiError = await r.json().catch(() => ({}));
+    throw new Error(err.detail ?? 'Error al enviar comentario');
+  }
+  return r.json();
+}
+
+export async function crearTicketPublico(payload: TicketPublicoCreate): Promise<TicketPublicoOut> {
+  const r = await fetch(`${API_BASE}/api/v1/portal/tickets`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!r.ok) {
+    const err: ApiError = await r.json().catch(() => ({}));
+    throw new Error(err.detail ?? 'Error al crear ticket');
+  }
+  return r.json();
+}
+
+// ── Redes WiFi (admin) ────────────────────────────────────────────────────────
+
+export interface RedWifiAdminOut {
+  id: number;
+  sede: string;
+  nombre_red: string;
+  tipo_red: string | null;
+  contrasena: string;
+  descripcion: string | null;
+  is_active: boolean;
+}
+
+export interface RedWifiCreate {
+  sede: string;
+  nombre_red: string;
+  tipo_red?: string | null;
+  contrasena: string;
+  descripcion?: string | null;
+}
+
+export async function listRedesWifi(sede?: string): Promise<RedWifiAdminOut[]> {
+  const qs = sede ? `?sede=${encodeURIComponent(sede)}` : '';
+  return apiRequest<RedWifiAdminOut[]>(`/api/v1/redes-wifi${qs}`);
+}
+
+export async function createRedWifi(data: RedWifiCreate): Promise<RedWifiAdminOut> {
+  return apiRequest<RedWifiAdminOut>('/api/v1/redes-wifi', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateRedWifi(id: number, data: Partial<RedWifiCreate & { is_active: boolean }>): Promise<RedWifiAdminOut> {
+  return apiRequest<RedWifiAdminOut>(`/api/v1/redes-wifi/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteRedWifi(id: number): Promise<void> {
+  await apiRequest<void>(`/api/v1/redes-wifi/${id}`, { method: 'DELETE' });
+}
+
+// ── Tickets (IT staff) ────────────────────────────────────────────────────────
+
+export interface ComentarioOut {
+  id: number;
+  autor_nombre: string;
+  contenido: string;
+  es_interno: boolean;
+  created_at: string;
+}
+
+export interface TicketOut {
+  id: number;
+  numero: string;
+  documento_identidad: string;
+  empleado_nombre: string;
+  sede: string;
+  categoria: string;
+  tipo_solicitud: string;
+  asunto: string;
+  descripcion: string;
+  estado: string;
+  prioridad: string;
+  resolucion: string | null;
+  created_at: string;
+  updated_at: string;
+  asignado_a_nombre: string | null;
+  equipos: EquipoBrief[];
+  comentarios: ComentarioOut[];
+  imagenes: TicketImagenOut[];
+}
+
+export interface TicketUpdate {
+  estado?: string;
+  prioridad?: string;
+  asignado_a_id?: number | null;
+  resolucion?: string;
+}
+
+export async function listTickets(filters: { sede?: string; estado?: string; categoria?: string; documento?: string; skip?: number; limit?: number } = {}): Promise<{ items: TicketOut[]; total: number }> {
+  const p = new URLSearchParams();
+  if (filters.sede) p.set('sede', filters.sede);
+  if (filters.estado) p.set('estado', filters.estado);
+  if (filters.categoria) p.set('categoria', filters.categoria);
+  if (filters.documento) p.set('documento', filters.documento);
+  if (filters.skip) p.set('skip', String(filters.skip));
+  if (filters.limit) p.set('limit', String(filters.limit));
+  const qs = p.toString();
+  return apiRequest(`/api/v1/tickets${qs ? '?' + qs : ''}`);
+}
+
+export async function updateTicket(id: number, data: TicketUpdate): Promise<TicketOut> {
+  return apiRequest<TicketOut>(`/api/v1/tickets/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function addComentario(ticketId: number, data: { contenido: string; es_interno: boolean }): Promise<ComentarioOut> {
+  return apiRequest<ComentarioOut>(`/api/v1/tickets/${ticketId}/comentarios`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+}
+
+// ── Mi Jornada ────────────────────────────────────────────────────────────────
+
+export interface RegistroJornadaOut {
+  id: number;
+  tipo: 'entrada' | 'salida';
+  timestamp: string;
+  sede: string | null;
+  notas: string | null;
+  foto_url: string | null;
+  latitud: number | null;
+  longitud: number | null;
+  ip_publica: string | null;
+  dispositivo: string | null;
+}
+
+export interface SedeInfoOut {
+  id: number;
+  nombre: string;
+  latitud: number;
+  longitud: number;
+  radio_metros: number;
+  tipo: 'empresa' | 'home_office';
+}
+
+export interface HoyJornadaResponse {
+  empleado_id: number;
+  nombres: string;
+  apellidos: string;
+  sede: string | null;
+  cargo: string | null;
+  registros: RegistroJornadaOut[];
+  proximo: 'entrada' | 'salida';
+  sede_info: SedeInfoOut | null;        // primera sede (compat)
+  sedes_info: SedeInfoOut[];            // sedes asignadas al empleado
+  todas_sedes_info: SedeInfoOut[];      // todas las sedes activas (geovalla)
+  ip_verificada: boolean;               // true si la IP coincide con una sede autorizada
+  foto_requerida: boolean;              // true si este empleado es uno de los 2 del día
+}
+
+// ── Dashboard supervisor ──────────────────────────────────────────────────────
+
+export interface RegistroResumen {
+  timestamp: string;
+  foto_url: string | null;
+}
+
+export interface EmpleadoAsistenciaOut {
+  empleado_id: number;
+  nombres: string;
+  apellidos: string;
+  sede: string | null;
+  cargo: string | null;
+  estado: 'presente' | 'completo' | 'ausente';
+  entrada: RegistroResumen | null;
+  salida: RegistroResumen | null;
+  total_minutos: number | null;
+}
+
+export interface AsistenciaResponse {
+  fecha: string;
+  total_empleados: number;
+  presentes: number;
+  completos: number;
+  ausentes: number;
+  empleados: EmpleadoAsistenciaOut[];
+}
+
+export async function getAsistencia(params: { fecha?: string; sede?: string } = {}): Promise<AsistenciaResponse> {
+  const q = new URLSearchParams();
+  if (params.fecha) q.set('fecha', params.fecha);
+  if (params.sede) q.set('sede', params.sede);
+  const qs = q.toString();
+  return apiRequest<AsistenciaResponse>(`/api/v1/jornada/asistencia${qs ? `?${qs}` : ''}`);
+}
+
+export async function getRegistrosEmpleado(
+  empleadoId: number,
+  fecha?: string,
+): Promise<RegistroJornadaOut[]> {
+  const q = fecha ? `?fecha=${fecha}` : '';
+  return apiRequest<RegistroJornadaOut[]>(`/api/v1/jornada/empleado/${empleadoId}/registros${q}`);
+}
+
+export async function getJornadaHoy(cedula: string): Promise<HoyJornadaResponse> {
+  const r = await fetch(`${API_BASE}/api/v1/jornada/hoy/${encodeURIComponent(cedula)}`);
+  if (!r.ok) {
+    const err: ApiError = await r.json().catch(() => ({}));
+    throw new Error(err.detail ?? 'Empleado no encontrado');
+  }
+  return r.json();
+}
+
+export interface DiaRegistros {
+  fecha: string;
+  dia_semana: string;
+  es_hoy: boolean;
+  registros: RegistroJornadaOut[];
+  tiempo_sede: string | null;
+}
+
+export interface SemanaJornadaResponse {
+  dias: DiaRegistros[];
+}
+
+export async function getJornadaSemana(cedula: string): Promise<SemanaJornadaResponse> {
+  const r = await fetch(`${API_BASE}/api/v1/jornada/semana/${encodeURIComponent(cedula)}`);
+  if (!r.ok) throw new Error('Error al obtener la semana');
+  return r.json();
+}
+
+export interface EmpleadoSemanaOut {
+  empleado_id: number;
+  nombres: string;
+  apellidos: string;
+  cargo: string | null;
+  sede: string | null;
+  dias: DiaRegistros[];
+  dias_asistidos: number;
+  dias_incompletos: number;
+  total_minutos: number;
+}
+
+export interface ReporteSemanalOut {
+  semana_inicio: string;
+  semana_fin: string;
+  empleados: EmpleadoSemanaOut[];
+}
+
+export async function getReporteSemanal(fecha?: string, sedeId?: number): Promise<ReporteSemanalOut> {
+  const p = new URLSearchParams();
+  if (fecha) p.set('fecha', fecha);
+  if (sedeId) p.set('sede_id', String(sedeId));
+  const qs = p.size ? '?' + p.toString() : '';
+  return apiRequest(`/api/v1/jornada/admin/reporte-semanal${qs}`);
+}
+
+// ── Sedes Jornada (admin) ─────────────────────────────────────────────────────
+
+export interface SedeJornadaOut {
+  id: number;
+  nombre: string;
+  direccion: string | null;
+  ciudad: string | null;
+  latitud: number;
+  longitud: number;
+  radio_metros: number;
+  ip_autorizada: string | null;
+  tipo: 'empresa' | 'home_office';
+  is_active: boolean;
+  bodegas: { id: number; nombre: string }[];
+}
+
+export interface SedeJornadaCreate {
+  nombre: string;
+  direccion?: string;
+  ciudad?: string;
+  latitud: number;
+  longitud: number;
+  radio_metros: number;
+  ip_autorizada?: string;
+  tipo: 'empresa' | 'home_office';
+  bodega_ids: number[];
+}
+
+export async function getSedesJornada(): Promise<SedeJornadaOut[]> {
+  const r = await fetch(`${API_BASE}/api/v1/jornada/sedes`);
+  if (!r.ok) return [];
+  return r.json();
+}
+
+export async function createSedeJornada(data: SedeJornadaCreate): Promise<SedeJornadaOut> {
+  return apiRequest<SedeJornadaOut>('/api/v1/jornada/admin/sedes', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateSedeJornada(id: number, data: Partial<SedeJornadaCreate> & { is_active?: boolean }): Promise<SedeJornadaOut> {
+  return apiRequest<SedeJornadaOut>(`/api/v1/jornada/admin/sedes/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteSedeJornada(id: number): Promise<void> {
+  return apiRequest<void>(`/api/v1/jornada/admin/sedes/${id}`, { method: 'DELETE' });
+}
+
+export async function registrarJornada(
+  cedula: string,
+  opciones?: {
+    tipo?: 'entrada' | 'salida';
+    notas?: string;
+    foto?: Blob;
+    latitud?: number;
+    longitud?: number;
+  },
+): Promise<RegistroJornadaOut> {
+  const form = new FormData();
+  form.append('cedula', cedula);
+  if (opciones?.tipo) form.append('tipo', opciones.tipo);
+  if (opciones?.notas) form.append('notas', opciones.notas);
+  if (opciones?.latitud !== undefined) form.append('latitud', String(opciones.latitud));
+  if (opciones?.longitud !== undefined) form.append('longitud', String(opciones.longitud));
+  if (typeof navigator !== 'undefined') form.append('dispositivo', navigator.userAgent.slice(0, 300));
+  if (opciones?.foto) form.append('foto', opciones.foto, 'selfie.jpg');
+
+  const r = await fetch(`${API_BASE}/api/v1/jornada/registrar`, {
+    method: 'POST',
+    body: form,
+  });
+  if (!r.ok) {
+    const err: ApiError = await r.json().catch(() => ({}));
+    throw new Error(err.detail ?? 'Error al registrar');
+  }
+  return r.json();
+}
+
+// ── Integración SIESUA ────────────────────────────────────────────────────────
+
+export interface SiesuaSyncResult {
+  sedes_creadas: number;
+  sedes_actualizadas: number;
+  empleados_creados: number;
+  empleados_actualizados: number;
+  empleados_sin_cambios: number;
+  errores: string[];
+  ok: boolean;
+}
+
+export async function sincronizarSiesua(): Promise<SiesuaSyncResult> {
+  return apiRequest<SiesuaSyncResult>('/api/v1/integraciones/siesua/sync', { method: 'POST' });
 }

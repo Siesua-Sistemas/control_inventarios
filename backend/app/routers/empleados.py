@@ -18,11 +18,13 @@ def _service(db: Session = Depends(get_db)) -> EmpleadoService:
 def list_empleados(
     search: str | None = Query(None),
     sede: str | None = Query(None),
+    skip: int = Query(0, ge=0),
+    limit: int | None = Query(None, ge=1, le=200),
     service: EmpleadoService = Depends(_service),
     _user=Depends(require_permissions('empleados:read')),
 ):
-    items = service.list_empleados(search, sede)
-    return {'total': len(items), 'items': items}
+    items, total = service.list_empleados(search, sede, skip, limit)
+    return {'total': total, 'items': items}
 
 
 @router.post('', response_model=EmpleadoOut, status_code=201)

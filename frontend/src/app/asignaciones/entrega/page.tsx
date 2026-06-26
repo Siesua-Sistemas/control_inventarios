@@ -35,7 +35,6 @@ function EntregaAsignacionContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { loading: authLoading, hasPermission } = useAuth();
-
   const empId = Number(searchParams.get('emp'));
   const eqsParam = searchParams.get('eqs') ?? '';
   const eqIds = eqsParam.split(',').map(Number).filter(Boolean);

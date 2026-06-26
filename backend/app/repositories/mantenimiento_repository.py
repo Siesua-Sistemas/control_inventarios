@@ -1,6 +1,9 @@
-from sqlalchemy import select
+from datetime import date, timedelta
+
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
+from app.models.equipment import Equipment
 from app.models.mantenimiento import Mantenimiento
 
 
@@ -45,3 +48,55 @@ class MantenimientoRepository:
         m.is_active = False
         self.db.add(m)
         self.db.commit()
+
+    def list_global(
+        self,
+        sede: str | None = None,
+        tipo: str | None = None,
+        tipo_equipo: str | None = None,
+        estado_vencimiento: str | None = None,
+        proximo_desde: date | None = None,
+        proximo_hasta: date | None = None,
+        estado: str | None = None,
+        skip: int = 0,
+        limit: int = 50,
+    ) -> tuple[list[Mantenimiento], int]:
+        query = (
+            select(Mantenimiento)
+            .join(Equipment, Mantenimiento.equipment_id == Equipment.id)
+            .where(Mantenimiento.is_active.is_(True))
+        )
+        if sede:
+            query = query.where(Equipment.sede.ilike(f'%{sede}%'))
+        if tipo:
+            query = query.where(Mantenimiento.tipo == tipo)
+        if tipo_equipo:
+            query = query.where(Equipment.tipo == tipo_equipo)
+        if estado:
+            query = query.where(Mantenimiento.estado == estado)
+        if proximo_desde:
+            query = query.where(Mantenimiento.proximo_mantenimiento >= proximo_desde)
+        if proximo_hasta:
+            query = query.where(Mantenimiento.proximo_mantenimiento <= proximo_hasta)
+        if estado_vencimiento:
+            today = date.today()
+            if estado_vencimiento == 'vencido':
+                query = query.where(Mantenimiento.proximo_mantenimiento < today)
+            elif estado_vencimiento == 'proximo':
+                query = query.where(
+                    Mantenimiento.proximo_mantenimiento >= today,
+                    Mantenimiento.proximo_mantenimiento <= today + timedelta(days=30),
+                )
+            elif estado_vencimiento == 'al_dia':
+                query = query.where(
+                    or_(
+                        Mantenimiento.proximo_mantenimiento.is_(None),
+                        Mantenimiento.proximo_mantenimiento > today + timedelta(days=30),
+                    )
+                )
+
+        total = self.db.scalar(select(func.count()).select_from(query.subquery()))
+        items = list(
+            self.db.scalars(query.order_by(Mantenimiento.fecha.desc()).offset(skip).limit(limit)).all()
+        )
+        return items, total or 0

@@ -1,8 +1,10 @@
 from datetime import datetime
 
 from sqlalchemy import Boolean, Column, DateTime, Integer, String
+from sqlalchemy.orm import relationship
 
 from app.database import Base
+from app.models.jornada_associations import empleado_sedes_jornada
 
 
 class Empleado(Base):
@@ -17,6 +19,9 @@ class Empleado(Base):
     sede = Column(String(120), nullable=True)
     email = Column(String(160), nullable=True)
     telefono = Column(String(20), nullable=True)
+    en_jornada = Column(Boolean, default=False, nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    sedes_jornada = relationship('SedeJornada', secondary=empleado_sedes_jornada, lazy='select')

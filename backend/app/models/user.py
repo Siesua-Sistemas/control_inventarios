@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Table
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, JSON, String, Table
 from sqlalchemy.orm import Mapped, relationship
 
 from app.database import Base
@@ -35,6 +35,8 @@ class Role(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(80), unique=True, nullable=False)
     description = Column(String(255), nullable=True)
+    home_dashboard = Column(String(20), nullable=False, default='general', server_default='general')
+    dominios = Column(JSON, nullable=False, default=lambda: ['IT'])
 
     permissions: Mapped[list[Permission]] = relationship(
         'Permission',

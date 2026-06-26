@@ -4,15 +4,19 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
+import { useAuth } from '@/components/auth-provider';
 import { EquipoModal } from '@/components/equipo-modal';
 import { NavBar } from '@/components/nav-bar';
 import {
+  exportActasCsv,
+  exportHistorialCsv,
   isAuthenticated,
   listActas,
   listHistorial,
   type ActaEntregaRow,
   type AsignacionRow,
 } from '@/lib/api';
+import { compareValues, SortableTh } from '@/lib/sort-utils';
 
 // ─── Pestaña: Movimientos ─────────────────────────────────────────────────────
 
@@ -21,30 +25,6 @@ const TIPO_BADGE: Record<string, string> = {
   'Devolución': 'bg-emerald-100 text-emerald-700 border-emerald-300 dark:bg-emerald-500/20 dark:text-emerald-300 dark:border-emerald-500/30',
   'Traslado': 'bg-purple-100 text-purple-700 border-purple-300 dark:bg-purple-500/20 dark:text-purple-300 dark:border-purple-500/30',
 };
-
-// ─── Helper genérico de ordenamiento ───────────────────────────────────────
-
-function compareValues(a: string | number, b: string | number): number {
-  if (typeof a === 'number' && typeof b === 'number') return a - b;
-  return String(a).localeCompare(String(b), 'es', { sensitivity: 'base' });
-}
-
-function SortableTh<T extends string>(props: {
-  field: T; label: string; sortField: T; sortDir: 'asc' | 'desc';
-  onSort: (field: T) => void; className?: string;
-}) {
-  const { field, label, sortField, sortDir, onSort, className = '' } = props;
-  return (
-    <th className={`px-4 py-3 ${className}`}>
-      <button onClick={() => onSort(field)} className="flex items-center gap-1 hover:text-slate-900 dark:hover:text-slate-200 transition-colors">
-        {label}
-        <span className={sortField === field ? 'text-cyan-600 dark:text-cyan-400' : 'text-slate-400 dark:text-slate-600'}>
-          {sortField === field ? (sortDir === 'asc' ? '▲' : '▼') : '⇅'}
-        </span>
-      </button>
-    </th>
-  );
-}
 
 type MovSortField = 'fecha' | 'tipo' | 'equipo' | 'destino' | 'estado' | 'registrado';
 
@@ -60,6 +40,8 @@ function movSortValue(m: AsignacionRow, field: MovSortField): string | number {
 }
 
 function MovimientosTab() {
+  const { loading: authLoading, hasPermission } = useAuth();
+  const canExport = authLoading || hasPermission('reports:export');
   const [items, setItems] = useState<AsignacionRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [total, setTotal] = useState(0);
@@ -70,6 +52,7 @@ function MovimientosTab() {
   const [filterHasta, setFilterHasta] = useState('');
   const [sortField, setSortField] = useState<MovSortField>('fecha');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  const [exporting, setExporting] = useState(false);
   const PAGE_SIZE = 50;
 
   const toggleSort = (field: MovSortField) => {
@@ -95,6 +78,17 @@ function MovimientosTab() {
   const handleFilter = (e: React.FormEvent) => { e.preventDefault(); setPage(0); load(filterTipo, filterDesde, filterHasta, 0); };
   const clearFilters = () => { setFilterTipo(''); setFilterDesde(''); setFilterHasta(''); setPage(0); load('', '', '', 0); };
   const goPage = (p: number) => { setPage(p); load(filterTipo, filterDesde, filterHasta, p); };
+
+  const handleExportCsv = async () => {
+    setExporting(true);
+    try {
+      await exportHistorialCsv({
+        tipo: filterTipo || undefined,
+        desde: filterDesde || undefined,
+        hasta: filterHasta || undefined,
+      });
+    } finally { setExporting(false); }
+  };
 
   return (
     <div>
@@ -130,6 +124,12 @@ function MovimientosTab() {
           <button type="button" onClick={clearFilters}
             className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-600 hover:text-slate-900 dark:border-slate-700 dark:text-slate-400 dark:hover:text-slate-200 transition-colors">
             Limpiar
+          </button>
+        )}
+        {canExport && (
+          <button type="button" onClick={handleExportCsv} disabled={exporting}
+            className="ml-auto rounded-lg border border-slate-300 bg-slate-100 px-4 py-2 text-sm text-slate-700 hover:bg-slate-200 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 transition-colors">
+            {exporting ? 'Descargando...' : 'Descargar CSV'}
           </button>
         )}
       </form>
@@ -244,6 +244,8 @@ function actaSortValue(acta: ActaEntregaRow, field: ActaSortField): string | num
 }
 
 function ActasTab() {
+  const { loading: authLoading, hasPermission } = useAuth();
+  const canExport = authLoading || hasPermission('reports:export');
   const [actas, setActas] = useState<ActaEntregaRow[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -251,8 +253,11 @@ function ActasTab() {
   const [sede, setSede] = useState('');
   const [desde, setDesde] = useState('');
   const [hasta, setHasta] = useState('');
+  const [page, setPage] = useState(0);
+  const [exporting, setExporting] = useState(false);
   const [sortField, setSortField] = useState<ActaSortField>('fecha');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  const PAGE_SIZE = 50;
 
   const toggleSort = (field: ActaSortField) => {
     if (sortField === field) {
@@ -263,18 +268,31 @@ function ActasTab() {
     }
   };
 
-  const load = async (t = tipo, s = sede, d = desde, h = hasta) => {
+  const load = async (t = tipo, s = sede, d = desde, h = hasta, p = page) => {
     setLoading(true);
     try {
-      const r = await listActas({ tipo: t || undefined, sede: s || undefined, desde: d || undefined, hasta: h || undefined });
+      const r = await listActas({ tipo: t || undefined, sede: s || undefined, desde: d || undefined, hasta: h || undefined, skip: p * PAGE_SIZE, limit: PAGE_SIZE });
       setActas(r.items); setTotal(r.total);
     } finally { setLoading(false); }
   };
 
   useEffect(() => { load(); }, []);
 
-  const handleFilter = (e: React.FormEvent) => { e.preventDefault(); load(); };
-  const clearFilters = () => { setTipo(''); setSede(''); setDesde(''); setHasta(''); load('', '', '', ''); };
+  const handleFilter = (e: React.FormEvent) => { e.preventDefault(); setPage(0); load(tipo, sede, desde, hasta, 0); };
+  const clearFilters = () => { setTipo(''); setSede(''); setDesde(''); setHasta(''); setPage(0); load('', '', '', '', 0); };
+  const goPage = (p: number) => { setPage(p); load(tipo, sede, desde, hasta, p); };
+
+  const handleExportCsv = async () => {
+    setExporting(true);
+    try {
+      await exportActasCsv({
+        tipo: tipo || undefined,
+        sede: sede || undefined,
+        desde: desde || undefined,
+        hasta: hasta || undefined,
+      });
+    } finally { setExporting(false); }
+  };
 
   return (
     <div>
@@ -312,6 +330,12 @@ function ActasTab() {
           <button type="button" onClick={clearFilters}
             className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-600 hover:text-slate-900 dark:border-slate-700 dark:text-slate-400 dark:hover:text-slate-200 transition-colors">
             Limpiar
+          </button>
+        )}
+        {canExport && (
+          <button type="button" onClick={handleExportCsv} disabled={exporting}
+            className="ml-auto rounded-lg border border-slate-300 bg-slate-100 px-4 py-2 text-sm text-slate-700 hover:bg-slate-200 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 transition-colors">
+            {exporting ? 'Descargando...' : 'Descargar CSV'}
           </button>
         )}
       </form>
@@ -389,7 +413,22 @@ function ActasTab() {
       )}
 
       {!loading && total > 0 && (
-        <p className="mt-2 text-xs text-slate-500 dark:text-slate-600">{total} acta{total !== 1 ? 's' : ''} en total</p>
+        <div className="mt-3 flex items-center justify-between text-xs text-slate-500 dark:text-slate-600">
+          <span>{total} acta{total !== 1 ? 's' : ''} en total</span>
+          {total > PAGE_SIZE && (
+            <div className="flex items-center gap-2">
+              <button onClick={() => goPage(page - 1)} disabled={page === 0}
+                className="rounded-lg border border-slate-300 px-3 py-1.5 disabled:opacity-40 hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800 transition-colors">
+                ← Anterior
+              </button>
+              <span>Página {page + 1} de {Math.ceil(total / PAGE_SIZE)}</span>
+              <button onClick={() => goPage(page + 1)} disabled={(page + 1) * PAGE_SIZE >= total}
+                className="rounded-lg border border-slate-300 px-3 py-1.5 disabled:opacity-40 hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800 transition-colors">
+                Siguiente →
+              </button>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );

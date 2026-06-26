@@ -12,6 +12,7 @@ import {
   getBodegaInventario,
   isAuthenticated,
   type BodegaInventario,
+  type EquipmentRow,
 } from '@/lib/api';
 import { ESTADO_COLORS } from '@/lib/constants';
 
@@ -21,7 +22,6 @@ export default function EntregaBodegaPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const { loading: authLoading, hasPermission } = useAuth();
-
   const [data, setData] = useState<BodegaInventario | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -83,6 +83,24 @@ export default function EntregaBodegaPage() {
   const allChecked = checked.size === data.equipos.length && data.equipos.length > 0;
   const today = new Date().toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' });
 
+  // Agrupar equipos: cada dispositivo padre junto con sus periféricos/hijos asociados
+  const equipoIds = new Set(data.equipos.map((e) => e.id));
+  const childrenByParent = new Map<number, EquipmentRow[]>();
+  for (const eq of data.equipos) {
+    if (eq.parent_equipment_id != null && equipoIds.has(eq.parent_equipment_id)) {
+      const arr = childrenByParent.get(eq.parent_equipment_id) ?? [];
+      arr.push(eq);
+      childrenByParent.set(eq.parent_equipment_id, arr);
+    }
+  }
+  for (const children of childrenByParent.values()) {
+    children.sort((a, b) => a.codigo_interno.localeCompare(b.codigo_interno));
+  }
+  const topLevelEquipos = data.equipos
+    .filter((eq) => eq.parent_equipment_id == null || !equipoIds.has(eq.parent_equipment_id))
+    .slice()
+    .sort((a, b) => a.codigo_interno.localeCompare(b.codigo_interno));
+
   const toggleCheck = (equipoId: number) => {
     setChecked((prev) => {
       const next = new Set(prev);
@@ -95,6 +113,57 @@ export default function EntregaBodegaPage() {
   const checkAll = () => {
     if (allChecked) setChecked(new Set());
     else setChecked(new Set(data.equipos.map((e) => e.id)));
+  };
+
+  const renderEquipoRow = (eq: EquipmentRow, isChild: boolean, peripheralCount = 0) => {
+    const isChecked = checked.has(eq.id);
+    return (
+      <label
+        key={eq.id}
+        className={`flex cursor-pointer items-center gap-4 px-6 py-4 transition-colors ${isChild ? 'pl-14' : ''} ${
+          isChecked
+            ? 'bg-emerald-50 dark:bg-emerald-500/5'
+            : isChild
+            ? 'bg-slate-50 hover:bg-slate-100 dark:bg-slate-950/40 dark:hover:bg-slate-900'
+            : 'hover:bg-slate-100 dark:hover:bg-slate-900'
+        }`}
+      >
+        <input
+          type="checkbox"
+          checked={isChecked}
+          onChange={() => toggleCheck(eq.id)}
+          className="h-5 w-5 shrink-0 cursor-pointer rounded border-slate-300 dark:border-slate-600 accent-emerald-500"
+        />
+        {isChild && <span className="shrink-0 text-slate-400 dark:text-slate-600">↳</span>}
+        <div className="grid flex-1 grid-cols-4 gap-3 items-center min-w-0">
+          <div className="min-w-0">
+            <p className="text-xs text-slate-500">Código</p>
+            <p className="flex items-center gap-2 font-mono text-sm font-bold text-cyan-600 dark:text-cyan-400 truncate">
+              {eq.codigo_interno}
+              {peripheralCount > 0 && (
+                <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-semibold text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300">
+                  +{peripheralCount} periférico{peripheralCount > 1 ? 's' : ''}
+                </span>
+              )}
+            </p>
+          </div>
+          <div className="min-w-0">
+            <p className="text-xs text-slate-500">Tipo</p>
+            <p className="text-sm text-slate-700 dark:text-slate-300 truncate">{eq.tipo}</p>
+          </div>
+          <div className="min-w-0">
+            <p className="text-xs text-slate-500">Marca / Modelo</p>
+            <p className="text-sm font-semibold text-slate-900 dark:text-white truncate">{eq.marca} {eq.modelo}</p>
+          </div>
+          <div className="min-w-0">
+            <span className={`inline-block rounded-full border px-2.5 py-0.5 text-xs font-semibold ${ESTADO_COLORS[eq.estado] ?? 'bg-slate-200 text-slate-700 border-slate-300 dark:bg-slate-700 dark:text-slate-300 dark:border-slate-600'}`}>
+              {eq.estado}
+            </span>
+          </div>
+        </div>
+        {isChecked && <span className="shrink-0 text-emerald-600 dark:text-emerald-400">✓</span>}
+      </label>
+    );
   };
 
   const handleGuardar = async () => {
@@ -239,42 +308,13 @@ export default function EntregaBodegaPage() {
             </div>
 
             <div className="divide-y divide-slate-200 dark:divide-slate-800">
-              {data.equipos.map((eq) => {
-                const isChecked = checked.has(eq.id);
+              {topLevelEquipos.map((eq) => {
+                const children = childrenByParent.get(eq.id) ?? [];
                 return (
-                  <label
-                    key={eq.id}
-                    className={`flex cursor-pointer items-center gap-4 px-6 py-4 transition-colors ${
-                      isChecked ? 'bg-emerald-50 dark:bg-emerald-500/5' : 'hover:bg-slate-100 dark:hover:bg-slate-900'
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={isChecked}
-                      onChange={() => toggleCheck(eq.id)}
-                      className="h-5 w-5 shrink-0 cursor-pointer rounded border-slate-300 dark:border-slate-600 accent-emerald-500"
-                    />
-                    <div className="grid flex-1 grid-cols-4 gap-3 items-center min-w-0">
-                      <div className="min-w-0">
-                        <p className="text-xs text-slate-500">Código</p>
-                        <p className="font-mono text-sm font-bold text-cyan-600 dark:text-cyan-400 truncate">{eq.codigo_interno}</p>
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-xs text-slate-500">Tipo</p>
-                        <p className="text-sm text-slate-700 dark:text-slate-300 truncate">{eq.tipo}</p>
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-xs text-slate-500">Marca / Modelo</p>
-                        <p className="text-sm font-semibold text-slate-900 dark:text-white truncate">{eq.marca} {eq.modelo}</p>
-                      </div>
-                      <div className="min-w-0">
-                        <span className={`inline-block rounded-full border px-2.5 py-0.5 text-xs font-semibold ${ESTADO_COLORS[eq.estado] ?? 'bg-slate-200 text-slate-700 border-slate-300 dark:bg-slate-700 dark:text-slate-300 dark:border-slate-600'}`}>
-                          {eq.estado}
-                        </span>
-                      </div>
-                    </div>
-                    {isChecked && <span className="shrink-0 text-emerald-600 dark:text-emerald-400">✓</span>}
-                  </label>
+                  <div key={eq.id}>
+                    {renderEquipoRow(eq, false, children.length)}
+                    {children.map((child) => renderEquipoRow(child, true))}
+                  </div>
                 );
               })}
             </div>

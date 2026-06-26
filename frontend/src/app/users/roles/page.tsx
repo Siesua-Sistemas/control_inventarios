@@ -27,6 +27,13 @@ const MODULE_LABELS: Record<string, string> = {
   mantenimientos: 'Mantenimientos',
 };
 
+const HOME_DASHBOARD_OPTIONS = [
+  { value: 'general', label: 'General (Admin IT)' },
+  { value: 'inventario', label: 'Inventarios (Compras)' },
+  { value: 'entregas', label: 'Entregas (Administrativo)' },
+  { value: 'tecnico', label: 'Técnico (Mantenimiento)' },
+];
+
 function groupPermissions(permissions: PermissionItem[]) {
   const groups = new Map<string, PermissionItem[]>();
   for (const permission of permissions) {
@@ -41,9 +48,16 @@ function groupPermissions(permissions: PermissionItem[]) {
   }));
 }
 
+const DOMINIOS_DISPONIBLES = [
+  { key: 'IT', label: 'IT (Tecnología)' },
+  { key: 'BIOINGENIERIA', label: 'Bioingeniería' },
+];
+
 interface RoleEdit {
   name: string;
   description: string;
+  homeDashboard: string;
+  dominios: string[];
   permissionIds: Set<number>;
 }
 
@@ -58,9 +72,11 @@ export default function RolesPage() {
   const [savingId, setSavingId] = useState<number | null>(null);
   const [messages, setMessages] = useState<Record<number, string>>({});
 
-  const [newRole, setNewRole] = useState<{ name: string; description: string; permissionIds: Set<number> }>({
+  const [newRole, setNewRole] = useState<{ name: string; description: string; homeDashboard: string; dominios: string[]; permissionIds: Set<number> }>({
     name: '',
     description: '',
+    homeDashboard: 'general',
+    dominios: ['IT'],
     permissionIds: new Set(),
   });
   const [creating, setCreating] = useState(false);
@@ -92,6 +108,8 @@ export default function RolesPage() {
           initialEdits[role.id] = {
             name: role.name,
             description: role.description ?? '',
+            homeDashboard: role.home_dashboard,
+            dominios: role.dominios ?? ['IT'],
             permissionIds: new Set(role.permissions.map((p) => p.id)),
           };
         }
@@ -117,11 +135,24 @@ export default function RolesPage() {
     });
   };
 
-  const updateField = (roleId: number, field: 'name' | 'description', value: string) => {
+  const updateField = (roleId: number, field: 'name' | 'description' | 'homeDashboard', value: string) => {
     setEdits((current) => {
       const role = current[roleId];
       if (!role) return current;
       return { ...current, [roleId]: { ...role, [field]: value } };
+    });
+  };
+
+  const toggleDominio = (roleId: number, dominio: string) => {
+    setEdits((current) => {
+      const role = current[roleId];
+      if (!role) return current;
+      const current_dominios = role.dominios;
+      const next = current_dominios.includes(dominio)
+        ? current_dominios.filter((d) => d !== dominio)
+        : [...current_dominios, dominio];
+      if (next.length === 0) return current; // must have at least one
+      return { ...current, [roleId]: { ...role, dominios: next } };
     });
   };
 
@@ -135,6 +166,8 @@ export default function RolesPage() {
       const updated = await updateRole(roleId, {
         name: edit.name,
         description: edit.description,
+        home_dashboard: edit.homeDashboard,
+        dominios: edit.dominios,
         permission_ids: Array.from(edit.permissionIds),
       });
       setRoles((current) => current.map((role) => (role.id === roleId ? updated : role)));
@@ -168,6 +201,8 @@ export default function RolesPage() {
       const created = await createRole({
         name: newRole.name,
         description: newRole.description || null,
+        home_dashboard: newRole.homeDashboard,
+        dominios: newRole.dominios,
         permission_ids: Array.from(newRole.permissionIds),
       });
       setRoles((current) => [...current, created]);
@@ -176,10 +211,12 @@ export default function RolesPage() {
         [created.id]: {
           name: created.name,
           description: created.description ?? '',
+          homeDashboard: created.home_dashboard,
+          dominios: created.dominios ?? ['IT'],
           permissionIds: new Set(created.permissions.map((p) => p.id)),
         },
       }));
-      setNewRole({ name: '', description: '', permissionIds: new Set() });
+      setNewRole({ name: '', description: '', homeDashboard: 'general', dominios: ['IT'], permissionIds: new Set() });
       setCreateSuccess('Rol creado correctamente');
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : 'No fue posible crear el rol');
@@ -212,7 +249,7 @@ export default function RolesPage() {
               if (!edit) return null;
               return (
                 <div key={role.id} className="rounded-2xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
-                  <div className="grid gap-4 md:grid-cols-2">
+                  <div className="grid gap-4 md:grid-cols-3">
                     <div>
                       <label htmlFor={`name-${role.id}`}>Nombre del rol</label>
                       <input
@@ -230,6 +267,35 @@ export default function RolesPage() {
                         onChange={(event) => updateField(role.id, 'description', event.target.value)}
                         disabled={!canWrite}
                       />
+                    </div>
+                    <div>
+                      <label htmlFor={`home-dashboard-${role.id}`}>Dashboard de inicio</label>
+                      <select
+                        id={`home-dashboard-${role.id}`}
+                        value={edit.homeDashboard}
+                        onChange={(event) => updateField(role.id, 'homeDashboard', event.target.value)}
+                        disabled={!canWrite}
+                      >
+                        {HOME_DASHBOARD_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  <div className="mt-3">
+                    <p className="mb-1.5 text-sm font-medium text-slate-700 dark:text-slate-300">Áreas de trabajo</p>
+                    <div className="flex gap-4">
+                      {DOMINIOS_DISPONIBLES.map((d) => (
+                        <label key={d.key} className="flex items-center gap-2 text-sm">
+                          <input
+                            type="checkbox"
+                            checked={edit.dominios.includes(d.key)}
+                            onChange={() => toggleDominio(role.id, d.key)}
+                            disabled={!canWrite}
+                          />
+                          {d.label}
+                        </label>
+                      ))}
                     </div>
                   </div>
 
@@ -269,7 +335,7 @@ export default function RolesPage() {
             {canWrite ? (
               <form onSubmit={handleCreateRole} className="rounded-2xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
                 <h2 className="mb-4 text-xl font-bold">Crear nuevo rol</h2>
-                <div className="grid gap-4 md:grid-cols-2">
+                <div className="grid gap-4 md:grid-cols-3">
                   <div>
                     <label htmlFor="new-role-name">Nombre del rol</label>
                     <input
@@ -286,6 +352,38 @@ export default function RolesPage() {
                       value={newRole.description}
                       onChange={(event) => setNewRole((current) => ({ ...current, description: event.target.value }))}
                     />
+                  </div>
+                  <div>
+                    <label htmlFor="new-role-home-dashboard">Dashboard de inicio</label>
+                    <select
+                      id="new-role-home-dashboard"
+                      value={newRole.homeDashboard}
+                      onChange={(event) => setNewRole((current) => ({ ...current, homeDashboard: event.target.value }))}
+                    >
+                      {HOME_DASHBOARD_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div className="mt-3">
+                  <p className="mb-1.5 text-sm font-medium text-slate-700 dark:text-slate-300">Áreas de trabajo</p>
+                  <div className="flex gap-4">
+                    {DOMINIOS_DISPONIBLES.map((d) => (
+                      <label key={d.key} className="flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={newRole.dominios.includes(d.key)}
+                          onChange={() => {
+                            const next = newRole.dominios.includes(d.key)
+                              ? newRole.dominios.filter((x) => x !== d.key)
+                              : [...newRole.dominios, d.key];
+                            if (next.length > 0) setNewRole((c) => ({ ...c, dominios: next }));
+                          }}
+                        />
+                        {d.label}
+                      </label>
+                    ))}
                   </div>
                 </div>
 

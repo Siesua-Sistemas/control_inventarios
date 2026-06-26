@@ -3,11 +3,12 @@
 import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
+import { DatePickerPresets } from '@/components/date-picker-presets';
 import { NavBar } from '@/components/nav-bar';
-import { getEquipment, isAuthenticated, updateEquipment, type EquipmentPayload } from '@/lib/api';
+import { getEquipment, isAuthenticated, listEquipmentTipos, updateEquipment, type EquipmentPayload, type EquipmentTipo } from '@/lib/api';
 
-const TIPOS = ['Portátil', 'Celular', 'Tablet', 'Cámara', 'Audífonos', 'Monitor', 'Impresora', 'Red', 'Accesorio', 'Servidor', 'Otro'];
 const ESTADOS = ['Disponible', 'Asignado', 'En mantenimiento', 'Dañado', 'Prestado', 'En bodega', 'Perdido', 'Dado de baja'];
+const CRITICIDADES = ['Alta', 'Media', 'Baja'];
 
 export default function EditarEquipoPage() {
   const router = useRouter();
@@ -16,6 +17,7 @@ export default function EditarEquipoPage() {
 
   const [form, setForm] = useState<EquipmentPayload | null>(null);
   const [codigoInterno, setCodigoInterno] = useState('');
+  const [tipos, setTipos] = useState<EquipmentTipo[]>([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
@@ -37,6 +39,7 @@ export default function EditarEquipoPage() {
           sede: data.sede,
           ubicacion: data.ubicacion,
           estado: data.estado,
+          criticidad: data.criticidad,
           specs: data.specs,
           fecha_compra: data.fecha_compra,
           valor: data.valor,
@@ -44,10 +47,16 @@ export default function EditarEquipoPage() {
           numero_factura: data.numero_factura,
           garantia_vence: data.garantia_vence,
           observaciones: data.observaciones,
+          fecha_calibracion: data.fecha_calibracion,
+          vencimiento_calibracion: data.vencimiento_calibracion,
+          frecuencia_calibracion_meses: data.frecuencia_calibracion_meses,
           bodega_id: data.bodega_id,
           empleado_id: data.empleado_id,
           parent_equipment_id: data.parent_equipment_id,
         });
+        listEquipmentTipos().then((r) => {
+          setTipos(r.items.filter((t) => t.activo || t.nombre === data.tipo));
+        }).catch(() => null);
       })
       .catch(() => setError('No se pudo cargar el equipo'))
       .finally(() => setFetching(false));
@@ -116,7 +125,7 @@ export default function EditarEquipoPage() {
               <div>
                 <label htmlFor="tipo">Tipo *</label>
                 <select id="tipo" value={form.tipo} onChange={(e) => set('tipo', e.target.value)} required>
-                  {TIPOS.map((t) => <option key={t}>{t}</option>)}
+                  {tipos.map((t) => <option key={t.id} value={t.nombre}>{t.nombre}</option>)}
                 </select>
               </div>
               <div>
@@ -153,6 +162,12 @@ export default function EditarEquipoPage() {
                   {ESTADOS.map((s) => <option key={s}>{s}</option>)}
                 </select>
               </div>
+              <div>
+                <label htmlFor="criticidad">Criticidad *</label>
+                <select id="criticidad" value={form.criticidad ?? 'Media'} onChange={(e) => set('criticidad', e.target.value)} required>
+                  {CRITICIDADES.map((c) => <option key={c}>{c}</option>)}
+                </select>
+              </div>
             </div>
           </section>
 
@@ -178,7 +193,32 @@ export default function EditarEquipoPage() {
               </div>
               <div>
                 <label htmlFor="garantia_vence">Garantía vence</label>
-                <input id="garantia_vence" type="date" value={form.garantia_vence ?? ''} onChange={(e) => set('garantia_vence', e.target.value)} />
+                <DatePickerPresets id="garantia_vence" value={form.garantia_vence ?? ''} onChange={(v) => set('garantia_vence', v)} />
+              </div>
+            </div>
+          </section>
+
+          {/* Calibración / Metrología */}
+          <section>
+            <h2 className="mb-4 text-xs font-semibold uppercase tracking-widest text-cyan-600 dark:text-cyan-400">Calibración / Metrología</h2>
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div>
+                <label htmlFor="fecha_calibracion">Última calibración</label>
+                <input id="fecha_calibracion" type="date" value={form.fecha_calibracion ?? ''} onChange={(e) => set('fecha_calibracion', e.target.value)} />
+              </div>
+              <div>
+                <label htmlFor="vencimiento_calibracion">Vencimiento calibración</label>
+                <DatePickerPresets id="vencimiento_calibracion" value={form.vencimiento_calibracion ?? ''} onChange={(v) => set('vencimiento_calibracion', v)} />
+              </div>
+              <div>
+                <label htmlFor="frecuencia_calibracion_meses">Recalibrar cada (meses)</label>
+                <input
+                  id="frecuencia_calibracion_meses"
+                  type="number" min="1" max="120"
+                  value={form.frecuencia_calibracion_meses ?? ''}
+                  onChange={(e) => setForm((prev) => prev ? { ...prev, frecuencia_calibracion_meses: e.target.value ? Number(e.target.value) : null } : prev)}
+                  placeholder="Ej: 12 = cada año"
+                />
               </div>
             </div>
           </section>

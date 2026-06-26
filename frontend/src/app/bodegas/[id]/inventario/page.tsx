@@ -98,7 +98,7 @@ export default function InventarioBodegaPage() {
             >
               {ultimaActa ? 'Última acta →' : 'Ver Acta'}
             </Link>
-            <span className="rounded-2xl bg-cyan-100 px-5 py-2 text-2xl font-bold text-cyan-700 dark:bg-cyan-500/10 dark:text-cyan-400">{data.total}</span>
+            <span className="rounded-2xl bg-cyan-100 px-5 py-2 text-2xl font-bold text-cyan-700 dark:bg-cyan-500/10 dark:text-cyan-400">{data.equipos.length}</span>
           </div>
         </div>
 

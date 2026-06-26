@@ -3,30 +3,41 @@
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
+import { DatePickerPresets } from '@/components/date-picker-presets';
 import { NavBar } from '@/components/nav-bar';
-import { createEquipment, isAuthenticated, listBodegas, type BodegaRow, type EquipmentPayload } from '@/lib/api';
+import { createEquipment, isAuthenticated, listBodegas, listEquipmentTipos, type BodegaRow, type EquipmentPayload, type EquipmentTipo } from '@/lib/api';
 
-const TIPOS = ['Portátil', 'Celular', 'Tablet', 'Cámara', 'Audífonos', 'Monitor', 'Impresora', 'Red', 'Accesorio', 'Servidor', 'Otro'];
 const ESTADOS = ['Disponible', 'En bodega', 'En mantenimiento', 'Dañado', 'Prestado', 'Perdido', 'Dado de baja'];
+const CRITICIDADES = ['Alta', 'Media', 'Baja'];
 
 const EMPTY: EquipmentPayload = {
   serial: '', tipo: 'Portátil', marca: '', modelo: '',
   placa: null, sede: '', ubicacion: null,
   bodega_id: null, empleado_id: null, parent_equipment_id: null, specs: null,
-  estado: 'Disponible', fecha_compra: null, valor: null,
+  estado: 'Disponible', criticidad: 'Media',
+  fecha_compra: null, valor: null,
   proveedor: null, numero_factura: null, garantia_vence: null, observaciones: null,
+  fecha_calibracion: null, vencimiento_calibracion: null, frecuencia_calibracion_meses: null,
 };
 
 export default function NuevoEquipoPage() {
   const router = useRouter();
-  const [form, setForm] = useState<EquipmentPayload>(EMPTY);
+  const [form, setForm] = useState<EquipmentPayload>({ ...EMPTY });
   const [bodegas, setBodegas] = useState<BodegaRow[]>([]);
+  const [tipos, setTipos] = useState<EquipmentTipo[]>([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (!isAuthenticated()) { router.replace('/login'); return; }
     listBodegas().then((r) => setBodegas(r.items)).catch(() => null);
+    listEquipmentTipos().then((r) => {
+      const active = r.items.filter((t) => t.activo);
+      setTipos(active);
+      if (active.length && !active.some((t) => t.nombre === form.tipo)) {
+        setForm((prev) => ({ ...prev, tipo: active[0].nombre }));
+      }
+    }).catch(() => null);
   }, [router]);
 
   function set(field: keyof EquipmentPayload, value: string | null) {
@@ -49,7 +60,7 @@ export default function NuevoEquipoPage() {
     if (!form.bodega_id) { setError('Debes seleccionar una bodega'); return; }
     setLoading(true); setError('');
     try {
-      await createEquipment(form);
+      await createEquipment({ ...form });
       router.push('/equipos');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al crear el equipo');
@@ -82,7 +93,7 @@ export default function NuevoEquipoPage() {
               <div>
                 <label htmlFor="tipo">Tipo *</label>
                 <select id="tipo" value={form.tipo} onChange={(e) => set('tipo', e.target.value)} required>
-                  {TIPOS.map((t) => <option key={t}>{t}</option>)}
+                  {tipos.map((t) => <option key={t.id} value={t.nombre}>{t.nombre}</option>)}
                 </select>
               </div>
               <div>
@@ -139,6 +150,12 @@ export default function NuevoEquipoPage() {
                   {ESTADOS.map((s) => <option key={s}>{s}</option>)}
                 </select>
               </div>
+              <div>
+                <label htmlFor="criticidad">Criticidad *</label>
+                <select id="criticidad" value={form.criticidad ?? 'Media'} onChange={(e) => set('criticidad', e.target.value)} required>
+                  {CRITICIDADES.map((c) => <option key={c}>{c}</option>)}
+                </select>
+              </div>
             </div>
           </section>
 
@@ -164,7 +181,32 @@ export default function NuevoEquipoPage() {
               </div>
               <div>
                 <label htmlFor="garantia_vence">Garantía vence</label>
-                <input id="garantia_vence" type="date" value={form.garantia_vence ?? ''} onChange={(e) => set('garantia_vence', e.target.value)} />
+                <DatePickerPresets id="garantia_vence" value={form.garantia_vence ?? ''} onChange={(v) => set('garantia_vence', v)} />
+              </div>
+            </div>
+          </section>
+
+          {/* Calibración / Metrología */}
+          <section>
+            <h2 className="mb-4 text-xs font-semibold uppercase tracking-widest text-cyan-600 dark:text-cyan-400">Calibración / Metrología</h2>
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div>
+                <label htmlFor="fecha_calibracion">Última calibración</label>
+                <input id="fecha_calibracion" type="date" value={form.fecha_calibracion ?? ''} onChange={(e) => set('fecha_calibracion', e.target.value)} />
+              </div>
+              <div>
+                <label htmlFor="vencimiento_calibracion">Vencimiento calibración</label>
+                <DatePickerPresets id="vencimiento_calibracion" value={form.vencimiento_calibracion ?? ''} onChange={(v) => set('vencimiento_calibracion', v)} />
+              </div>
+              <div>
+                <label htmlFor="frecuencia_calibracion_meses">Recalibrar cada (meses)</label>
+                <input
+                  id="frecuencia_calibracion_meses"
+                  type="number" min="1" max="120"
+                  value={form.frecuencia_calibracion_meses ?? ''}
+                  onChange={(e) => setForm((prev) => ({ ...prev, frecuencia_calibracion_meses: e.target.value ? Number(e.target.value) : null }))}
+                  placeholder="Ej: 12 = cada año"
+                />
               </div>
             </div>
           </section>

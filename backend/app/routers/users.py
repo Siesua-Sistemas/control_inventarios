@@ -1,13 +1,32 @@
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.dependencies import require_permissions
+from app.dependencies import get_current_user, require_permissions
+from app.models.user import User
 from app.repositories.user_repository import UserRepository
 from app.schemas.user import PermissionOut, RoleCreate, RoleOut, RoleUpdate, UserCreate, UserListResponse, UserOut, UserUpdate
 from app.services.user_service import UserService
 
 router = APIRouter(prefix='/api/v1/users', tags=['users'])
+
+
+class UserBasic(BaseModel):
+    id: int
+    full_name: str
+    email: str
+
+
+@router.get('/basico', response_model=list[UserBasic])
+def list_users_basic(
+    db: Session = Depends(get_db),
+    _user=Depends(get_current_user),
+):
+    """Lista ligera de usuarios activos para selectores (cualquier usuario autenticado)."""
+    items = db.scalars(select(User).where(User.is_active.is_(True)).order_by(User.full_name)).all()
+    return [UserBasic(id=u.id, full_name=u.full_name, email=u.email) for u in items]
 
 
 @router.get('', response_model=UserListResponse)
@@ -56,6 +75,8 @@ def list_roles(db: Session = Depends(get_db), user=Depends(require_permissions('
             'id': role.id,
             'name': role.name,
             'description': role.description,
+            'home_dashboard': role.home_dashboard,
+            'dominios': role.dominios or ['IT'],
             'permissions': [
                 {'id': permission.id, 'code': permission.code, 'name': permission.name, 'description': permission.description}
                 for permission in role.permissions
@@ -90,6 +111,8 @@ def create_role(payload: RoleCreate, db: Session = Depends(get_db), user=Depends
         id=role.id,
         name=role.name,
         description=role.description,
+        home_dashboard=role.home_dashboard,
+        dominios=role.dominios or ['IT'],
         permissions=[PermissionOut(id=p.id, code=p.code, name=p.name, description=p.description) for p in role.permissions],
     )
 
@@ -103,6 +126,8 @@ def update_role(role_id: int, payload: RoleUpdate, db: Session = Depends(get_db)
         id=role.id,
         name=role.name,
         description=role.description,
+        home_dashboard=role.home_dashboard,
+        dominios=role.dominios or ['IT'],
         permissions=[PermissionOut(id=p.id, code=p.code, name=p.name, description=p.description) for p in role.permissions],
     )
 

@@ -1,5 +1,10 @@
 """
-Field templates per equipment type.
+Datos de siembra (seed) para `equipment_tipos`/`equipment_tipo_specs`.
+
+Esta tabla ya NO se usa en runtime para la ficha técnica (ver
+app.services.equipment_tipo_service): se conserva solo para poblar las
+tablas la primera vez que se levanta la base de datos, en
+main.py::seed_data().
 Each field: key, label, type (text|number|select|boolean|scale), options, min, max, placeholder.
 """
 
@@ -105,5 +110,49 @@ SPECS_BY_TIPO: dict[str, list[dict]] = {
     ],
 }
 
-# Equipment types that can act as parent (hold peripherals)
-TIPOS_PADRES = {'Portátil', 'Celular', 'Tablet', 'Servidor', 'Monitor', 'Otro'}
+# Tipos exclusivos del dominio Bioingeniería
+SPECS_BIOING_BY_TIPO: dict[str, list[dict]] = {
+    'Equipo médico': [
+        {'key': 'potencia_watts', 'label': 'Potencia (W)', 'type': 'number', 'placeholder': 'Ej: 150'},
+        {'key': 'voltaje', 'label': 'Voltaje (V)', 'type': 'number', 'placeholder': 'Ej: 110'},
+        {'key': 'año_fabricacion', 'label': 'Año de fabricación', 'type': 'number', 'placeholder': 'Ej: 2022'},
+        {'key': 'vida_util_años', 'label': 'Vida útil estimada (años)', 'type': 'number'},
+    ],
+    'Equipo láser': [
+        {'key': 'longitud_onda_nm', 'label': 'Longitud de onda (nm)', 'type': 'number', 'placeholder': 'Ej: 755'},
+        {'key': 'potencia_watts', 'label': 'Potencia (W)', 'type': 'number'},
+        {'key': 'tipo_laser', 'label': 'Tipo de láser', 'type': 'text', 'placeholder': 'Ej: Alexandrita, Nd:YAG'},
+    ],
+    'HydraFacial': [
+        {'key': 'generacion', 'label': 'Generación / Modelo', 'type': 'text', 'placeholder': 'Ej: Elite+'},
+        {'key': 'num_puntas', 'label': 'N° de puntas incluidas', 'type': 'number'},
+    ],
+    'Radiofrecuencia': [
+        {'key': 'frecuencia_mhz', 'label': 'Frecuencia (MHz)', 'type': 'number', 'placeholder': 'Ej: 0.8'},
+        {'key': 'potencia_watts', 'label': 'Potencia (W)', 'type': 'number'},
+        {'key': 'tipo_rf', 'label': 'Tipo', 'type': 'text', 'placeholder': 'Ej: Monopolar, Bipolar'},
+    ],
+    'Criolipólisis': [
+        {'key': 'temperatura_min_c', 'label': 'Temperatura mínima (°C)', 'type': 'number', 'placeholder': 'Ej: -10'},
+        {'key': 'num_aplicadores', 'label': 'N° de aplicadores', 'type': 'number'},
+    ],
+    'Equipo de diagnóstico': [
+        {'key': 'tipo_diagnostico', 'label': 'Tipo de diagnóstico', 'type': 'text', 'placeholder': 'Ej: Ultrasonido, Dermatoscopio'},
+        {'key': 'resolucion', 'label': 'Resolución / Precisión', 'type': 'text'},
+    ],
+    'Equipo estético': [
+        {'key': 'tecnologia', 'label': 'Tecnología', 'type': 'text', 'placeholder': 'Ej: Ultrasonido focalizado, LED'},
+        {'key': 'areas_tratamiento', 'label': 'Áreas de tratamiento', 'type': 'text'},
+    ],
+    'Repuesto biomédico': [
+        {'key': 'referencia', 'label': 'Referencia / Part number', 'type': 'text'},
+        {'key': 'compatible_con', 'label': 'Compatible con equipo', 'type': 'text'},
+        {'key': 'cantidad_stock', 'label': 'Stock actual', 'type': 'number'},
+    ],
+    'Accesorio clínico': [
+        {'key': 'referencia', 'label': 'Referencia', 'type': 'text'},
+        {'key': 'compatible_con', 'label': 'Compatible con equipo', 'type': 'text'},
+    ],
+}
+
+TIPOS_PERIFERICO_BIOING: set[str] = {'Repuesto biomédico', 'Accesorio clínico'}
