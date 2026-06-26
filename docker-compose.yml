@@ -27,6 +27,7 @@ services:
       - traefik.http.routers.inventario-backend.tls=true
       - traefik.http.routers.inventario-backend.tls.certresolver=mytlschallenge
       - traefik.http.services.inventario-backend.loadbalancer.server.port=8000
+      - traefik.docker.network=n8n_default
     networks:
       - app-network
       - n8n_default
@@ -56,6 +57,7 @@ services:
       - traefik.http.routers.inventario-frontend.tls=true
       - traefik.http.routers.inventario-frontend.tls.certresolver=mytlschallenge
       - traefik.http.services.inventario-frontend.loadbalancer.server.port=3000
+      - traefik.docker.network=n8n_default
     networks:
       - app-network
       - n8n_default
