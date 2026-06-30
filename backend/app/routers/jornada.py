@@ -618,7 +618,10 @@ def get_asistencia(
         primer_entrada = entradas[0] if entradas else None
         ultima_salida  = salidas[-1] if salidas else None
 
-        if ultima_salida:
+        # El estado se determina por el tipo del registro más reciente,
+        # no por si existe alguna salida (soporta múltiples ciclos entrada/salida en el día)
+        ultimo_registro = emp_records[-1]  # ya ordenados por timestamp asc
+        if ultimo_registro.tipo == 'salida':
             estado = 'completo'
             completos += 1
         else:

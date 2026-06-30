@@ -19,6 +19,12 @@ export const CamaraJornada = forwardRef<CamaraJornadaRef, { className?: string; 
     useEffect(() => {
       let mounted = true;
 
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setEstado('error');
+        setErrorMsg('Cámara no disponible — se requiere HTTPS o localhost.');
+        return;
+      }
+
       navigator.mediaDevices
         .getUserMedia({
           video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
