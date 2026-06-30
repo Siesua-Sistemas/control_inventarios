@@ -6,8 +6,11 @@ import { AuthProvider } from '@/components/auth-provider';
 import { ThemeProvider } from '@/components/theme-provider';
 
 export const metadata: Metadata = {
-  title: 'Inventario - Gestión de usuarios',
-  description: 'Módulo de autenticación y administración de usuarios',
+  title: {
+    default: 'Siesua Inventario',
+    template: '%s · Siesua',
+  },
+  description: 'Sistema de gestión de inventarios, jornadas y activos de Siesua',
 };
 
 const THEME_INIT_SCRIPT = `
