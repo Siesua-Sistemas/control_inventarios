@@ -754,17 +754,22 @@ def reporte_semanal(
             # Si hay filtro de sede, solo contar tiempo y mostrar registros de esa sede
             regs = [r for r in regs_dia if r.sede == sede_nombre_filter] if sede_nombre_filter else regs_dia
 
-            entrada_r = next((r for r in regs if r.tipo == 'entrada'), None)
-            salida_r = next((r for r in regs if r.tipo == 'salida'), None)
+            entradas_ord = sorted([r for r in regs if r.tipo == 'entrada'], key=lambda r: r.timestamp)
+            salidas_ord  = sorted([r for r in regs if r.tipo == 'salida'],  key=lambda r: r.timestamp)
+
+            # Sumar todos los pares entrada→salida cronológicos
+            pares = min(len(entradas_ord), len(salidas_ord))
+            dia_min = sum(
+                max(0, int((salidas_ord[i].timestamp - entradas_ord[i].timestamp).total_seconds() // 60))
+                for i in range(pares)
+            )
 
             tiempo_sede = None
-            if entrada_r and salida_r:
-                delta = salida_r.timestamp - entrada_r.timestamp
-                m = int(delta.total_seconds() // 60)
-                total_min += m
-                tiempo_sede = f"{m // 60}h {m % 60:02d}m"
+            if pares > 0:
+                tiempo_sede = f"{dia_min // 60}h {dia_min % 60:02d}m"
+                total_min += dia_min
                 dias_asistidos += 1
-            elif entrada_r:
+            elif entradas_ord:
                 dias_incompletos += 1
 
             dias.append(DiaRegistros(
