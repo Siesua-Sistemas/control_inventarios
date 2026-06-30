@@ -266,6 +266,8 @@ os.makedirs('storage/mantenimiento_photos', exist_ok=True)
 os.makedirs('storage/ticket_fotos', exist_ok=True)
 os.makedirs('storage/jornadas', exist_ok=True)
 app.mount('/storage', StaticFiles(directory='storage'), name='storage')
+# También bajo /api/storage para que Traefik lo enrute con el prefijo /api
+app.mount('/api/storage', StaticFiles(directory='storage'), name='api_storage')
 
 app.include_router(auth_router)
 app.include_router(users_router)

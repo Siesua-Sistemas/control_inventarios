@@ -7,7 +7,11 @@ export const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:800
 export function storageUrl(path: string | null | undefined): string | null {
   if (!path) return null;
   if (path.startsWith('http')) return path;
-  return `${API_BASE}${path}`;
+  // Rewrite /storage/ → /api/storage/ so Traefik routes it to the backend via the /api prefix
+  const normalized = path.startsWith('/storage/')
+    ? '/api/storage/' + path.slice('/storage/'.length)
+    : path;
+  return `${API_BASE}${normalized}`;
 }
 
 function getStoredToken() {
