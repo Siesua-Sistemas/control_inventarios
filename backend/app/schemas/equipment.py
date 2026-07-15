@@ -9,6 +9,7 @@ ESTADOS_VALIDOS = {
     'Dañado', 'Prestado', 'En bodega', 'Perdido', 'Dado de baja',
 }
 CRITICIDADES_VALIDAS = {'Alta', 'Media', 'Baja'}
+DOMINIOS_VALIDOS = {'IT', 'Bioingeniería', 'General'}
 
 
 class EquipmentCreate(BaseModel):
@@ -24,6 +25,7 @@ class EquipmentCreate(BaseModel):
     specs: dict | None = None
     estado: str = 'Disponible'
     criticidad: str = 'Media'
+    dominio: str = 'IT'
     fecha_compra: date | None = None
     valor: Decimal | None = None
     proveedor: str | None = None
@@ -70,6 +72,7 @@ class EquipmentUpdate(BaseModel):
     specs: dict | None = None
     estado: str | None = None
     criticidad: str | None = None
+    dominio: str | None = None
     fecha_compra: date | None = None
     valor: Decimal | None = None
     proveedor: str | None = None
@@ -107,6 +110,7 @@ class EquipmentOut(BaseModel):
     ubicacion: str | None
     estado: str
     criticidad: str
+    dominio: str = 'IT'
     specs: dict | None
     fecha_compra: date | None
     valor: Decimal | None

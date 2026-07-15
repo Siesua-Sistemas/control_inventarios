@@ -30,11 +30,16 @@ class SpecFieldSchema(BaseModel):
         return v
 
 
+DOMINIOS_VALIDOS_TIPO = {'IT', 'Bioingeniería', 'General'}
+
+
 class EquipmentTipoCreate(BaseModel):
     nombre: str
+    dominio: str = 'IT'
     es_periferico: bool = False
     activo: bool = True
     orden: int = 0
+
     @field_validator('nombre')
     @classmethod
     def nombre_not_empty(cls, v: str) -> str:
@@ -43,9 +48,17 @@ class EquipmentTipoCreate(BaseModel):
             raise ValueError('El nombre no puede estar vacío')
         return v
 
+    @field_validator('dominio')
+    @classmethod
+    def dominio_valido(cls, v: str) -> str:
+        if v not in DOMINIOS_VALIDOS_TIPO:
+            raise ValueError(f'Dominio inválido. Opciones: {sorted(DOMINIOS_VALIDOS_TIPO)}')
+        return v
+
 
 class EquipmentTipoUpdate(BaseModel):
     nombre: str | None = None
+    dominio: str | None = None
     es_periferico: bool | None = None
     activo: bool | None = None
     orden: int | None = None
@@ -59,6 +72,13 @@ class EquipmentTipoUpdate(BaseModel):
                 raise ValueError('El nombre no puede estar vacío')
         return v
 
+    @field_validator('dominio')
+    @classmethod
+    def dominio_valido(cls, v: str | None) -> str | None:
+        if v is not None and v not in DOMINIOS_VALIDOS_TIPO:
+            raise ValueError(f'Dominio inválido. Opciones: {sorted(DOMINIOS_VALIDOS_TIPO)}')
+        return v
+
 
 class EquipmentTipoSpecsUpdate(BaseModel):
     specs: list[SpecFieldSchema]
@@ -67,6 +87,7 @@ class EquipmentTipoSpecsUpdate(BaseModel):
 class EquipmentTipoOut(BaseModel):
     id: int
     nombre: str
+    dominio: str
     es_periferico: bool
     activo: bool
     orden: int

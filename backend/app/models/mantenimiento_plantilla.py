@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String
+from sqlalchemy import Boolean, Column, Integer, JSON, Numeric, String
 
 from app.database import Base
 
@@ -11,3 +11,11 @@ class MantenimientoPlantillaPaso(Base):
     tipo_mantenimiento = Column(String(30), nullable=False)  # 'Preventivo', 'Correctivo', 'Ambos'
     descripcion = Column(String(500), nullable=False)
     orden = Column(Integer, nullable=False, default=0)
+
+    # Captura de datos: checkbox (default) | numero | texto | seleccion
+    tipo_campo = Column(String(20), nullable=False, default='checkbox', server_default='checkbox')
+    unidad = Column(String(30), nullable=True)
+    opciones = Column(JSON, nullable=True)          # lista de strings para 'seleccion'
+    valor_min = Column(Numeric(14, 4), nullable=True)
+    valor_max = Column(Numeric(14, 4), nullable=True)
+    obligatorio = Column(Boolean, nullable=False, default=True, server_default='true')

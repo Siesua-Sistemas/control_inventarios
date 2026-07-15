@@ -237,6 +237,9 @@ def _run_migrations() -> None:
         conn.execute(text(
             "ALTER TABLE sedes_jornada ADD COLUMN IF NOT EXISTS tipo VARCHAR(20) NOT NULL DEFAULT 'empresa'"
         ))
+        conn.execute(text(
+            "ALTER TABLE sedes_jornada ADD COLUMN IF NOT EXISTS horario_config JSONB"
+        ))
         # Integración SIESUA — tabla de mapeo aislada
         conn.execute(text("""
             CREATE TABLE IF NOT EXISTS integracion_siesua_mapping (
@@ -248,6 +251,43 @@ def _run_migrations() -> None:
                 CONSTRAINT uq_siesua_tipo_ext_id UNIQUE (tipo, ext_id)
             )
         """))
+        # Dominios de inventario — IT / Bioingeniería / General
+        conn.execute(text(
+            "ALTER TABLE equipment ADD COLUMN IF NOT EXISTS dominio VARCHAR(30) NOT NULL DEFAULT 'IT'"
+        ))
+        conn.execute(text(
+            "ALTER TABLE bodegas ADD COLUMN IF NOT EXISTS dominio VARCHAR(30) NOT NULL DEFAULT 'IT'"
+        ))
+        conn.execute(text(
+            "ALTER TABLE equipment_tipos ADD COLUMN IF NOT EXISTS dominio VARCHAR(30) NOT NULL DEFAULT 'IT'"
+        ))
+        conn.execute(text(
+            "ALTER TABLE actas_entrega ADD COLUMN IF NOT EXISTS dominio VARCHAR(30) NOT NULL DEFAULT 'IT'"
+        ))
+        conn.execute(text(
+            "ALTER TABLE roles ADD COLUMN IF NOT EXISTS dominios JSON NOT NULL DEFAULT '[\"IT\"]'"
+        ))
+
+        # Checklist con captura de datos (numero/texto/seleccion además de checkbox)
+        for tabla in ('mantenimiento_plantilla_pasos', 'mantenimiento_pasos'):
+            conn.execute(text(
+                f"ALTER TABLE {tabla} ADD COLUMN IF NOT EXISTS tipo_campo VARCHAR(20) NOT NULL DEFAULT 'checkbox'"
+            ))
+            conn.execute(text(f'ALTER TABLE {tabla} ADD COLUMN IF NOT EXISTS unidad VARCHAR(30)'))
+            conn.execute(text(f'ALTER TABLE {tabla} ADD COLUMN IF NOT EXISTS opciones JSON'))
+            conn.execute(text(f'ALTER TABLE {tabla} ADD COLUMN IF NOT EXISTS valor_min NUMERIC(14,4)'))
+            conn.execute(text(f'ALTER TABLE {tabla} ADD COLUMN IF NOT EXISTS valor_max NUMERIC(14,4)'))
+            conn.execute(text(
+                f'ALTER TABLE {tabla} ADD COLUMN IF NOT EXISTS obligatorio BOOLEAN NOT NULL DEFAULT true'
+            ))
+        conn.execute(text('ALTER TABLE mantenimiento_pasos ADD COLUMN IF NOT EXISTS valor VARCHAR(300)'))
+
+        # Tiempo de mano de obra — preparado (sin cálculo/UI aún)
+        conn.execute(text('ALTER TABLE mantenimientos ADD COLUMN IF NOT EXISTS iniciado_en TIMESTAMP'))
+        conn.execute(text('ALTER TABLE mantenimientos ADD COLUMN IF NOT EXISTS finalizado_en TIMESTAMP'))
+
+        # Dominio de tickets (IT / Bioingeniería / General) — existentes quedan como IT
+        conn.execute(text("ALTER TABLE tickets ADD COLUMN IF NOT EXISTS dominio VARCHAR(30) NOT NULL DEFAULT 'IT'"))
         conn.commit()
 
 
@@ -308,7 +348,8 @@ def seed_data():
             ('empleados:read', 'Ver empleados', 'Permite listar empleados'),
             ('empleados:write', 'Gestionar empleados', 'Permite crear y editar empleados'),
             ('asignaciones:read', 'Ver asignaciones', 'Permite ver historial de movimientos'),
-            ('asignaciones:write', 'Gestionar asignaciones', 'Permite entregar y recibir equipos'),
+            ('asignaciones:entregar', 'Nueva entrega', 'Permite entregar equipos a empleados y generar actas de entrega'),
+            ('asignaciones:write', 'Gestionar asignaciones', 'Permite entregar, recibir y gestionar todos los movimientos de equipos'),
             ('asignaciones:trasladar', 'Trasladar equipos', 'Permite trasladar equipos entre bodegas'),
             ('asignaciones:devolver_sin_acta', 'Devolver sin acta', 'Permite devolver equipos sin generar acta firmada'),
             ('mantenimientos:read', 'Ver mantenimientos', 'Permite ver registros de mantenimiento'),
@@ -325,7 +366,7 @@ def seed_data():
             ('tickets:read', 'Ver tickets', 'Permite ver todos los tickets de soporte y los propios via Mi Agenda'),
             ('tickets:write', 'Gestionar tickets', 'Permite actualizar estado, asignar y comentar tickets'),
             ('wifi:write', 'Gestionar redes WiFi', 'Permite crear, editar y eliminar redes WiFi'),
-            ('jornada:admin', 'Administrar sedes de jornada', 'Permite crear, editar y eliminar sedes del control de asistencia'),
+            ('jornada:admin', 'Administrar Ubicaciones', 'Permite crear, editar y eliminar sedes del control de asistencia'),
             ('jornada:read', 'Ver asistencia', 'Permite consultar registros de jornada del personal'),
             ('integraciones:write', 'Ejecutar integraciones', 'Permite sincronizar datos desde sistemas externos'),
         ]

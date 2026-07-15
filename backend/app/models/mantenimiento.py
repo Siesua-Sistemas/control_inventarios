@@ -22,6 +22,10 @@ class Mantenimiento(Base):
     estado = Column(String(30), nullable=False, default='programado', server_default='programado')
     prioridad = Column(String(10), nullable=False, default='Media', server_default='Media')
 
+    # Tiempo de mano de obra — capturado automáticamente, sin cálculo/UI aún (preparado para KPIs futuros)
+    iniciado_en = Column(DateTime, nullable=True)
+    finalizado_en = Column(DateTime, nullable=True)
+
     tecnico_id = Column(Integer, ForeignKey('users.id'), nullable=True)
 
     # Firma digital del técnico (base64 PNG)

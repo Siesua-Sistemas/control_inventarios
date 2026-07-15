@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.dependencies import require_permissions
+from app.dependencies import get_user_dominios, require_any_permission, require_permissions
 from app.repositories.asignacion_repository import AsignacionRepository
 from app.repositories.bodega_repository import BodegaRepository
 from app.repositories.empleado_repository import EmpleadoRepository
@@ -29,7 +29,7 @@ def _service(db: Session = Depends(get_db)) -> AsignacionService:
 def entregar(
     payload: EntregarRequest,
     service: AsignacionService = Depends(_service),
-    user=Depends(require_permissions('asignaciones:write')),
+    user=Depends(require_any_permission('asignaciones:write', 'asignaciones:entregar')),
 ):
     return service.entregar(payload, user.id)
 
@@ -38,7 +38,7 @@ def entregar(
 def entregar_multiple(
     payload: EntregarMultipleRequest,
     service: AsignacionService = Depends(_service),
-    user=Depends(require_permissions('asignaciones:write')),
+    user=Depends(require_any_permission('asignaciones:write', 'asignaciones:entregar')),
 ):
     return service.entregar_multiple(payload, user.id)
 
@@ -64,9 +64,9 @@ def trasladar(
 @router.get('/activas', response_model=AsignacionListResponse)
 def get_activas(
     service: AsignacionService = Depends(_service),
-    _user=Depends(require_permissions('asignaciones:read')),
+    user=Depends(require_permissions('asignaciones:read')),
 ):
-    items = service.get_activas()
+    items = service.get_activas(dominios_permitidos=get_user_dominios(user))
     return {'total': len(items), 'items': items}
 
 
@@ -80,9 +80,12 @@ def get_historial(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
     service: AsignacionService = Depends(_service),
-    _user=Depends(require_permissions('asignaciones:read')),
+    user=Depends(require_permissions('asignaciones:read')),
 ):
-    items, total = service.get_historial(equipment_id, empleado_id, tipo, desde, hasta, skip, limit)
+    items, total = service.get_historial(
+        equipment_id, empleado_id, tipo, desde, hasta, skip, limit,
+        dominios_permitidos=get_user_dominios(user),
+    )
     return {'total': total, 'items': items}
 
 
@@ -94,9 +97,12 @@ def export_historial(
     desde: date | None = Query(None),
     hasta: date | None = Query(None),
     service: AsignacionService = Depends(_service),
-    _user=Depends(require_permissions('asignaciones:read', 'reports:export')),
+    user=Depends(require_permissions('asignaciones:read', 'reports:export')),
 ):
-    items, _ = service.get_historial(equipment_id, empleado_id, tipo, desde, hasta, 0, None)
+    items, _ = service.get_historial(
+        equipment_id, empleado_id, tipo, desde, hasta, 0, None,
+        dominios_permitidos=get_user_dominios(user),
+    )
     rows = [
         [
             a.fecha.isoformat(),

@@ -178,14 +178,25 @@ function MovimientosTab() {
                   <p className="text-xs text-slate-500">{m.equipment_tipo}</p>
                 </td>
                 <td className="px-4 py-3 text-sm">
-                  {m.empleado_nombre ? (
+                  {m.tipo === 'Devolución' || m.tipo === 'Traslado' ? (
+                    m.bodega_destino_nombre ? (
+                      <>
+                        <p className="text-xs text-slate-400 dark:text-slate-500">→ Bodega</p>
+                        <p className="text-slate-700 dark:text-slate-300">{m.bodega_destino_nombre}</p>
+                      </>
+                    ) : m.tipo === 'Devolución' ? (
+                      <span className="text-slate-500 dark:text-slate-400 italic text-xs">→ Disponible</span>
+                    ) : (
+                      <span className="text-slate-400 dark:text-slate-600">—</span>
+                    )
+                  ) : m.empleado_nombre ? (
                     <>
                       <p className="text-slate-700 dark:text-slate-300">{m.empleado_nombre}</p>
                       {m.empleado_cedula && <p className="text-xs text-slate-500">{m.empleado_cedula}</p>}
                     </>
-                  ) : m.bodega_destino_nombre ? (
-                    <p className="text-slate-600 dark:text-slate-400">{m.bodega_destino_nombre}</p>
-                  ) : <span className="text-slate-500 dark:text-slate-600">—</span>}
+                  ) : (
+                    <span className="text-slate-500 dark:text-slate-600">—</span>
+                  )}
                 </td>
                 <td className="px-4 py-3 text-xs text-slate-600 dark:text-slate-400">
                   {m.estado_antes && <span className="text-slate-500 dark:text-slate-600">{m.estado_antes} → </span>}
@@ -434,11 +445,89 @@ function ActasTab() {
   );
 }
 
+// ─── Pestaña: Pendientes de firma ────────────────────────────────────────────
+
+function PendientesTab() {
+  const [actas, setActas] = useState<ActaEntregaRow[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    listActas({ limit: 500 })
+      .then((r) => setActas(r.items.filter((a) => !a.firma_entrega || !a.firma_recibe)))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return (
+    <div className="flex justify-center py-16">
+      <div className="h-7 w-7 animate-spin rounded-full border-2 border-slate-300 border-t-amber-500 dark:border-slate-700 dark:border-t-amber-400" />
+    </div>
+  );
+
+  if (actas.length === 0) return (
+    <div className="rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 py-16 text-center">
+      <p className="text-2xl mb-2">✅</p>
+      <p className="text-slate-600 dark:text-slate-400">No hay actas pendientes de firma.</p>
+      <p className="mt-1 text-xs text-slate-500 dark:text-slate-600">Todas las actas registradas tienen firmas completas.</p>
+    </div>
+  );
+
+  return (
+    <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+      <table className="min-w-full text-left text-sm">
+        <thead className="bg-slate-100 dark:bg-slate-950 text-xs uppercase tracking-wider text-slate-600 dark:text-slate-400">
+          <tr>
+            <th className="px-4 py-3">Fecha</th>
+            <th className="px-4 py-3">Sede / Título</th>
+            <th className="px-4 py-3">Entrega</th>
+            <th className="px-4 py-3">Recibe</th>
+            <th className="px-4 py-3 text-center">Firmas</th>
+            <th className="px-4 py-3"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {actas.map((acta) => {
+            const faltaEntrega = !acta.firma_entrega;
+            const faltaRecibe = !acta.firma_recibe;
+            return (
+              <tr key={acta.id} className="border-t border-slate-200 hover:bg-slate-100 dark:border-slate-800 dark:hover:bg-slate-800/30 transition-colors">
+                <td className="px-4 py-3 text-xs text-slate-600 dark:text-slate-400 whitespace-nowrap">
+                  {new Date(acta.fecha).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}
+                </td>
+                <td className="px-4 py-3">
+                  <p className="font-medium text-slate-800 dark:text-slate-200">{acta.titulo}</p>
+                  <p className="text-xs text-slate-500">{acta.sede}</p>
+                </td>
+                <td className="px-4 py-3 text-sm text-slate-700 dark:text-slate-300">{acta.entrega_nombre}</td>
+                <td className="px-4 py-3 text-sm text-slate-700 dark:text-slate-300">{acta.recibe_nombre}</td>
+                <td className="px-4 py-3 text-center">
+                  <div className="flex flex-col gap-0.5 items-center text-xs">
+                    {faltaEntrega && <span className="text-amber-600 dark:text-amber-400">⚠ Falta firma entrega</span>}
+                    {faltaRecibe && <span className="text-amber-600 dark:text-amber-400">⚠ Falta firma recibe</span>}
+                  </div>
+                </td>
+                <td className="px-4 py-3">
+                  <Link href={`/actas/${acta.id}/imprimir`}
+                    className="rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-400 transition-colors whitespace-nowrap">
+                    Completar firma →
+                  </Link>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      <div className="px-5 py-3 text-xs text-slate-500 dark:text-slate-600 border-t border-slate-200 dark:border-slate-800">
+        {actas.length} acta{actas.length !== 1 ? 's' : ''} pendiente{actas.length !== 1 ? 's' : ''} de firma
+      </div>
+    </div>
+  );
+}
+
 // ─── Página principal ─────────────────────────────────────────────────────────
 
 export default function HistorialPage() {
   const router = useRouter();
-  const [tab, setTab] = useState<'movimientos' | 'actas'>('movimientos');
+  const [tab, setTab] = useState<'movimientos' | 'actas' | 'pendientes'>('movimientos');
 
   useEffect(() => {
     if (!isAuthenticated()) router.replace('/login');
@@ -460,6 +549,7 @@ export default function HistorialPage() {
           {[
             { id: 'movimientos' as const, label: 'Movimientos' },
             { id: 'actas' as const, label: 'Actas firmadas' },
+            { id: 'pendientes' as const, label: 'Pendientes de firma' },
           ].map(({ id, label }) => (
             <button
               key={id}
@@ -477,6 +567,7 @@ export default function HistorialPage() {
 
         {tab === 'movimientos' && <MovimientosTab />}
         {tab === 'actas' && <ActasTab />}
+        {tab === 'pendientes' && <PendientesTab />}
       </main>
     </>
   );

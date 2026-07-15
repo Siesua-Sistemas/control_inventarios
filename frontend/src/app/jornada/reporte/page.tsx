@@ -10,6 +10,7 @@ import {
   getReporteSemanal,
   getSedesJornada,
   isAuthenticated,
+  registrarSalidaManual,
 } from '@/lib/api';
 import { useRouter } from 'next/navigation';
 
@@ -39,18 +40,59 @@ function labelSemana(inicio: string, fin: string): string {
   return `${i} – ${f}`;
 }
 
+// ── Ícono de ordenamiento ─────────────────────────────────────────────────────
+
+function SortIcon({ activo, dir }: { activo: boolean; dir: 'asc' | 'desc' }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}
+      className={`h-3 w-3 transition-colors ${activo ? 'text-cyan-500' : 'text-slate-300 dark:text-slate-600'}`}>
+      {activo && dir === 'asc'
+        ? <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 15.75l7.5-7.5 7.5 7.5" />
+        : <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+      }
+    </svg>
+  );
+}
+
 // ── Modal detalle de un día ───────────────────────────────────────────────────
 
 function ModalDia({
-  emp, dia, onClose,
+  emp, dia, onClose, onSalidaRegistrada,
 }: {
   emp: EmpleadoSemanaOut;
   dia: DiaRegistros;
   onClose: () => void;
+  onSalidaRegistrada: () => void;
 }) {
   const entradas = dia.registros.filter((r) => r.tipo === 'entrada').sort((a, b) => a.timestamp.localeCompare(b.timestamp));
   const salidas  = dia.registros.filter((r) => r.tipo === 'salida').sort((a, b) => a.timestamp.localeCompare(b.timestamp));
   const pares = Math.min(entradas.length, salidas.length);
+
+  // Salida manual: día pasado (no hoy), con entrada sin par de salida
+  const hoyBog = new Date(new Date().toLocaleString('en-CA', { timeZone: 'America/Bogota' }).slice(0, 10) + 'T00:00:00');
+  const fechaDia = new Date(dia.fecha + 'T00:00:00');
+  const esDiaPasado = fechaDia < hoyBog;
+  const necesitaSalida = entradas.length > salidas.length;
+  const mostrarFormSalida = esDiaPasado && necesitaSalida;
+
+  const [horaSalida, setHoraSalida] = useState('17:00');
+  const [guardando, setGuardando] = useState(false);
+  const [errorSalida, setErrorSalida] = useState('');
+
+  async function handleSalidaManual(e: React.FormEvent) {
+    e.preventDefault();
+    setGuardando(true);
+    setErrorSalida('');
+    try {
+      await registrarSalidaManual(emp.empleado_id, dia.fecha, horaSalida);
+      onSalidaRegistrada();
+      onClose();
+    } catch (err) {
+      setErrorSalida(err instanceof Error ? err.message : 'Error al registrar la salida');
+    } finally {
+      setGuardando(false);
+    }
+  }
 
   const sedesDelDia = [...new Set(dia.registros.filter((r) => r.sede).map((r) => r.sede as string))];
 
@@ -120,8 +162,18 @@ function ModalDia({
                       <p className="truncate text-[10px] text-slate-400">{r.sede}</p>
                     )}
                   </div>
-                  <span className="shrink-0 text-sm tabular-nums font-medium text-slate-700 dark:text-slate-200">
-                    {formatHora(r.timestamp)}
+                  <span className="flex shrink-0 items-center gap-1">
+                    {r.is_manual && (
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
+                        className="h-3.5 w-3.5 text-violet-500 dark:text-violet-400"
+                        aria-label="Salida registrada manualmente por administrador">
+                        <title>Salida registrada manualmente por administrador</title>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z" />
+                      </svg>
+                    )}
+                    <span className="text-sm tabular-nums font-medium text-slate-700 dark:text-slate-200">
+                      {formatHora(r.timestamp)}
+                    </span>
                   </span>
                 </div>
               ))
@@ -131,7 +183,9 @@ function ModalDia({
         {/* Pares con duración */}
         {pares > 0 && (
           <div className="border-t border-slate-100 px-5 py-3 dark:border-slate-800 space-y-1.5">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">Sesiones</p>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">
+              Sesiones{dia.almuerzo_min > 0 ? ' (tiempo bruto)' : ''}
+            </p>
             {Array.from({ length: pares }, (_, i) => {
               const minutos = Math.max(0, Math.round(
                 (new Date(salidas[i].timestamp).getTime() - new Date(entradas[i].timestamp).getTime()) / 60000
@@ -150,15 +204,55 @@ function ModalDia({
           </div>
         )}
 
+        {/* Formulario salida manual — solo días pasados con entrada sin salida */}
+        {mostrarFormSalida && (
+          <form onSubmit={handleSalidaManual} className="border-t border-amber-200/80 bg-amber-50/60 px-5 py-4 dark:border-amber-900/40 dark:bg-amber-900/10">
+            <div className="mb-2 flex items-center gap-2">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+              </svg>
+              <p className="text-xs font-semibold text-amber-700 dark:text-amber-400">
+                Sin salida registrada — ingresa la hora de salida
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="time"
+                value={horaSalida}
+                onChange={(e) => setHoraSalida(e.target.value)}
+                required
+                className="flex-1 rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm text-slate-700 focus:border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-400/20 dark:border-amber-700 dark:bg-slate-800 dark:text-slate-200"
+              />
+              <button
+                type="submit"
+                disabled={guardando}
+                className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-700 disabled:opacity-50 dark:bg-cyan-500 dark:text-slate-950"
+              >
+                {guardando ? 'Guardando…' : 'Registrar'}
+              </button>
+            </div>
+            {errorSalida && (
+              <p className="mt-2 text-xs text-red-600 dark:text-red-400">{errorSalida}</p>
+            )}
+          </form>
+        )}
+
         {/* Total */}
         {dia.tiempo_sede && (
-          <div className="flex items-center justify-between rounded-b-2xl border-t border-slate-100 bg-slate-50 px-5 py-3 dark:border-slate-800 dark:bg-slate-800/50">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-              Total en sede
-            </span>
-            <span className="text-base font-extrabold text-cyan-700 dark:text-cyan-400">
-              {dia.tiempo_sede}
-            </span>
+          <div className="rounded-b-2xl border-t border-slate-100 bg-slate-50 px-5 py-3 dark:border-slate-800 dark:bg-slate-800/50">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                Tiempo neto
+              </span>
+              <span className="text-base font-extrabold text-cyan-700 dark:text-cyan-400">
+                {dia.tiempo_sede}
+              </span>
+            </div>
+            {dia.almuerzo_min > 0 && (
+              <p className="mt-1 text-right text-[10px] text-slate-400 dark:text-slate-500">
+                Se restaron {dia.almuerzo_min} min de almuerzo según el horario de la sede
+              </p>
+            )}
           </div>
         )}
       </div>
@@ -193,37 +287,68 @@ function DiaCell({
     );
   }
 
-  // Verde: una sola sede (la principal) y un solo ciclo
-  // Cyan: múltiples ciclos o sede diferente a la principal
   const multipleCiclos = entradas.length > 1 || salidas.length > 1;
   const sedeDiferente = sedePrincipal
     ? dia.registros.some((r) => r.sede && r.sede !== sedePrincipal)
     : false;
-  const esPrincipal = !multipleCiclos && !sedeDiferente;
+  const sedesUnicas = new Set(dia.registros.filter((r) => r.sede).map((r) => r.sede as string));
+  const multipleSedes = sedesUnicas.size > 1 || sedeDiferente;
+  const tieneSalidaManual = salidas.some((r) => r.is_manual);
+  const esPrincipal = !multipleCiclos && !multipleSedes && !tieneSalidaManual;
 
   if (primerEntrada && ultimaSalida && dia.tiempo_sede) {
+    const colorBg = tieneSalidaManual
+      ? 'bg-violet-50 dark:bg-violet-900/20'
+      : esPrincipal
+      ? 'bg-emerald-50 dark:bg-emerald-900/20'
+      : 'bg-cyan-50 dark:bg-cyan-900/20';
+    const colorText = tieneSalidaManual
+      ? 'text-violet-700 dark:text-violet-400'
+      : esPrincipal
+      ? 'text-emerald-700 dark:text-emerald-400'
+      : 'text-cyan-700 dark:text-cyan-400';
+    const colorSub = tieneSalidaManual
+      ? 'text-violet-600/70 dark:text-violet-500'
+      : esPrincipal
+      ? 'text-emerald-600/70 dark:text-emerald-500'
+      : 'text-cyan-600/70 dark:text-cyan-500';
+
     return (
       <td className="border border-slate-100 px-1.5 py-1.5 text-center dark:border-slate-800">
         <button
           onClick={onSelect}
-          className={`w-full rounded-lg px-1.5 py-1.5 text-left transition-opacity hover:opacity-80 ${
-            esPrincipal
-              ? 'bg-emerald-50 dark:bg-emerald-900/20'
-              : 'bg-cyan-50 dark:bg-cyan-900/20'
-          }`}
+          className={`relative w-full rounded-lg px-1.5 py-1.5 text-left transition-opacity hover:opacity-80 ${colorBg}`}
         >
-          <p className={`text-[11px] font-semibold ${
-            esPrincipal ? 'text-emerald-700 dark:text-emerald-400' : 'text-cyan-700 dark:text-cyan-400'
-          }`}>
+          {/* Ícono de pin arriba a la derecha cuando hay múltiples sedes */}
+          {multipleSedes && (
+            <span className="absolute right-1 top-1">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="h-2.5 w-2.5 text-cyan-500 dark:text-cyan-400">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" />
+              </svg>
+            </span>
+          )}
+          {/* Ícono de llave arriba a la derecha cuando la salida es manual */}
+          {tieneSalidaManual && (
+            <span className="absolute right-1 top-1">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="h-2.5 w-2.5 text-violet-500 dark:text-violet-400">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z" />
+              </svg>
+            </span>
+          )}
+          <p className={`text-[11px] font-semibold ${colorText}`}>
             {dia.tiempo_sede}
           </p>
-          <p className={`text-[10px] ${
-            esPrincipal ? 'text-emerald-600/70 dark:text-emerald-500' : 'text-cyan-600/70 dark:text-cyan-500'
-          }`}>
+          <p className={`text-[10px] ${colorSub}`}>
             {formatHora(primerEntrada.timestamp)} – {formatHora(ultimaSalida.timestamp)}
           </p>
-          {multipleCiclos && (
-            <p className="text-[9px] font-bold text-cyan-500 dark:text-cyan-500">
+          {dia.almuerzo_min > 0 && (
+            <p className="text-[9px] text-slate-400 dark:text-slate-500">
+              {`−${dia.almuerzo_min}m almuerzo`}
+            </p>
+          )}
+          {multipleCiclos && !multipleSedes && !tieneSalidaManual && (
+            <p className="text-[9px] font-bold text-cyan-500 dark:text-cyan-400">
               {entradas.length} sesiones
             </p>
           )}
@@ -549,6 +674,17 @@ export default function ReporteSemanalPage() {
   const [loading, setLoading] = useState(true);
   const [busqueda, setBusqueda] = useState('');
   const [modalDia, setModalDia] = useState<{ emp: EmpleadoSemanaOut; dia: DiaRegistros } | null>(null);
+  const [ordenPor, setOrdenPor] = useState<'nombre' | 'dias' | 'horas'>('nombre');
+  const [ordenDir, setOrdenDir] = useState<'asc' | 'desc'>('desc');
+
+  function toggleOrden(col: 'nombre' | 'dias' | 'horas') {
+    if (ordenPor === col) {
+      setOrdenDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setOrdenPor(col);
+      setOrdenDir('desc');
+    }
+  }
   const printRef = useRef<HTMLDivElement>(null);
 
   // sedeId que va a la API: solo cuando es una sede empresa específica
@@ -598,6 +734,18 @@ export default function ReporteSemanalPage() {
       `${emp.nombres} ${emp.apellidos}`.toLowerCase().includes(q) ||
       `${emp.apellidos} ${emp.nombres}`.toLowerCase().includes(q)
     );
+  });
+
+  const empleadosOrdenados = [...empleadosFiltrados].sort((a, b) => {
+    let cmp = 0;
+    if (ordenPor === 'nombre') {
+      cmp = `${a.apellidos} ${a.nombres}`.localeCompare(`${b.apellidos} ${b.nombres}`, 'es');
+    } else if (ordenPor === 'dias') {
+      cmp = a.dias_asistidos - b.dias_asistidos;
+    } else {
+      cmp = a.total_minutos - b.total_minutos;
+    }
+    return ordenDir === 'asc' ? cmp : -cmp;
   });
 
   // Modo informe: exactamente 1 empleado coincide con la búsqueda
@@ -800,11 +948,37 @@ export default function ReporteSemanalPage() {
           ) : modoInforme ? (
             /* ── Modo informe (un solo empleado) ── */
             <div ref={printRef}>
+              {/* Cabecera solo para impresión */}
+              <div className="print-header hidden mb-3 flex items-center justify-between border-b border-slate-300 pb-2">
+                <p className="text-[10px] uppercase tracking-widest text-slate-400">Siesua · Informe individual de jornada</p>
+                <p className="text-[10px] text-slate-400">
+                  Generado el {new Date().toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' })}
+                </p>
+              </div>
               <InformeEmpleado emp={empleadoInforme!} semanaLabel={labelSemana(reporte.semana_inicio, reporte.semana_fin)} />
             </div>
           ) : (
             /* ── Tabla general (todos / filtrados) ── */
-            <div ref={printRef} className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
+            <div ref={printRef}>
+            {/* Cabecera solo para impresión */}
+            <div className="print-header hidden mb-4 border-b border-slate-300 pb-3">
+              <p className="text-[10px] uppercase tracking-widest text-slate-400">Siesua · Reporte de asistencia</p>
+              <p className="text-lg font-bold text-slate-900">
+                {reporte ? labelSemana(reporte.semana_inicio, reporte.semana_fin) : ''}
+              </p>
+              {filtroSede && filtroSede !== 'home_office' && (
+                <p className="text-xs text-slate-500">
+                  {sedes.find((s) => String(s.id) === filtroSede)?.nombre ?? ''}
+                </p>
+              )}
+              {filtroSede === 'home_office' && (
+                <p className="text-xs text-slate-500">Casa (Home Office)</p>
+              )}
+              <p className="mt-1 text-[10px] text-slate-400">
+                Generado el {new Date().toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' })}
+              </p>
+            </div>
+            <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
               <table className="w-full border-collapse text-sm">
                 <thead>
                   <tr className="bg-slate-50 dark:bg-slate-800">
@@ -828,25 +1002,38 @@ export default function ReporteSemanalPage() {
                         </span>
                       </th>
                     ))}
-                    <th className="border border-slate-200 px-2 py-3 text-center text-xs font-bold uppercase tracking-wider text-slate-500 dark:border-slate-700 dark:text-slate-400">
-                      Días
+                    <th className="border border-slate-200 px-2 py-3 text-center dark:border-slate-700">
+                      <button
+                        onClick={() => toggleOrden('dias')}
+                        className="flex w-full items-center justify-center gap-1 text-xs font-bold uppercase tracking-wider text-slate-500 hover:text-cyan-600 dark:text-slate-400 dark:hover:text-cyan-400"
+                      >
+                        Días
+                        <SortIcon activo={ordenPor === 'dias'} dir={ordenDir} />
+                      </button>
                     </th>
-                    <th className="border border-slate-200 px-3 py-3 text-right text-xs font-bold uppercase tracking-wider text-slate-500 dark:border-slate-700 dark:text-slate-400">
-                      Total
+                    <th className="border border-slate-200 px-3 py-3 text-right dark:border-slate-700">
+                      <button
+                        onClick={() => toggleOrden('horas')}
+                        className="flex w-full items-center justify-end gap-1 text-xs font-bold uppercase tracking-wider text-slate-500 hover:text-cyan-600 dark:text-slate-400 dark:hover:text-cyan-400"
+                      >
+                        Total
+                        <SortIcon activo={ordenPor === 'horas'} dir={ordenDir} />
+                      </button>
                     </th>
                   </tr>
                 </thead>
                 <tbody>
-                  {empleadosFiltrados.map((emp) => (
+                  {empleadosOrdenados.map((emp) => (
                     <EmpleadoRow
                       key={emp.empleado_id}
                       emp={emp}
                       onSelectDia={(dia) => setModalDia({ emp, dia })}
                     />
                   ))}
-                  <TotalesRow reporte={{ ...reporte, empleados: empleadosFiltrados }} />
+                  <TotalesRow reporte={{ ...reporte, empleados: empleadosOrdenados }} />
                 </tbody>
               </table>
+            </div>
             </div>
           )}
 
@@ -855,15 +1042,36 @@ export default function ReporteSemanalPage() {
             <div className="mt-4 flex flex-wrap gap-4 text-xs text-slate-500 dark:text-slate-400 print:mt-2">
               <span className="flex items-center gap-1.5">
                 <span className="inline-block h-3 w-3 rounded bg-emerald-100 dark:bg-emerald-900/40" />
-                Día completo (entrada + salida)
+                Día completo en sede habitual
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="inline-block h-3 w-3 rounded bg-cyan-100 dark:bg-cyan-900/40" />
+                Otra sede o varios ciclos
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="inline-block h-3 w-3 rounded bg-violet-100 dark:bg-violet-900/40" />
+                Salida registrada manualmente
               </span>
               <span className="flex items-center gap-1.5">
                 <span className="inline-block h-3 w-3 rounded bg-amber-100 dark:bg-amber-900/40" />
-                Solo entrada (sin salida registrada)
+                Entrada sin salida (incompleto)
               </span>
               <span className="flex items-center gap-1.5">
                 <span className="inline-block h-3 w-3 rounded bg-slate-100 dark:bg-slate-800" />
                 Ausente
+              </span>
+              <span className="flex items-center gap-1.5">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="h-3 w-3 text-cyan-500">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" />
+                </svg>
+                Varias sedes en el día
+              </span>
+              <span className="flex items-center gap-1.5">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="h-3 w-3 text-violet-500">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z" />
+                </svg>
+                Salida manual (admin)
               </span>
             </div>
           )}
@@ -877,15 +1085,58 @@ export default function ReporteSemanalPage() {
           emp={modalDia.emp}
           dia={modalDia.dia}
           onClose={() => setModalDia(null)}
+          onSalidaRegistrada={cargar}
         />
       )}
 
       <style jsx global>{`
         @media print {
-          nav, .print\\:hidden { display: none !important; }
+          @page {
+            size: ${modoInforme ? 'A4 portrait' : 'A4 landscape'};
+            margin: ${modoInforme ? '1.8cm 2cm' : '1cm 1.2cm'};
+          }
+
+          * {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+
           body { background: white !important; }
-          table { font-size: 10px !important; }
-          th, td { padding: 4px 6px !important; }
+          nav, [class*="print:hidden"], .print-hidden { display: none !important; }
+
+          /* Cabecera de impresión */
+          .print-header { display: block !important; }
+
+          /* Quitar sticky para que las columnas no se superpongan */
+          .sticky { position: static !important; z-index: auto !important; }
+
+          /* Tabla general */
+          .overflow-x-auto { overflow: visible !important; }
+          table {
+            font-size: 8px !important;
+            border-collapse: collapse !important;
+            width: 100% !important;
+            page-break-inside: auto;
+          }
+          thead { display: table-header-group; }
+          tr { page-break-inside: avoid; }
+          th, td { padding: 3px 5px !important; }
+
+          /* Botones dentro de celdas */
+          button { cursor: default !important; pointer-events: none; }
+
+          /* Bordes redondeados fuera en impresión */
+          .rounded-2xl, .rounded-xl, .rounded-lg { border-radius: 4px !important; }
+
+          /* Sombras fuera */
+          .shadow-sm, .shadow-2xl { box-shadow: none !important; }
+
+          /* Tarjetas del informe */
+          .grid { page-break-inside: auto; }
+          .grid > div { page-break-inside: avoid; }
+
+          /* Ajuste de columna de nombre */
+          td:first-child, th:first-child { width: 22% !important; min-width: 0 !important; }
         }
       `}</style>
     </>

@@ -17,8 +17,8 @@ def _spec_to_schema(spec) -> SpecFieldSchema:
 
 def _tipo_to_out(tipo: EquipmentTipo) -> EquipmentTipoOut:
     return EquipmentTipoOut(
-        id=tipo.id, nombre=tipo.nombre, es_periferico=tipo.es_periferico,
-        activo=tipo.activo, orden=tipo.orden,
+        id=tipo.id, nombre=tipo.nombre, dominio=tipo.dominio,
+        es_periferico=tipo.es_periferico, activo=tipo.activo, orden=tipo.orden,
         specs=[_spec_to_schema(s) for s in tipo.specs],
         created_at=tipo.created_at, updated_at=tipo.updated_at,
     )
@@ -28,8 +28,8 @@ class EquipmentTipoService:
     def __init__(self, repository: EquipmentTipoRepository):
         self.repository = repository
 
-    def list_all(self) -> list[EquipmentTipoOut]:
-        return [_tipo_to_out(t) for t in self.repository.list_all()]
+    def list_all(self, dominios_permitidos: list[str] | None = None) -> list[EquipmentTipoOut]:
+        return [_tipo_to_out(t) for t in self.repository.list_all(dominios_permitidos)]
 
     def get_tipo(self, tipo_id: int) -> EquipmentTipo:
         tipo = self.repository.get_by_id(tipo_id)
@@ -41,8 +41,8 @@ class EquipmentTipoService:
         if self.repository.get_by_nombre(payload.nombre.strip()):
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='Ya existe un tipo con ese nombre')
         tipo = EquipmentTipo(
-            nombre=payload.nombre.strip(), es_periferico=payload.es_periferico,
-            activo=payload.activo, orden=payload.orden,
+            nombre=payload.nombre.strip(), dominio=payload.dominio,
+            es_periferico=payload.es_periferico, activo=payload.activo, orden=payload.orden,
         )
         return _tipo_to_out(self.repository.create(tipo))
 

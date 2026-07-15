@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 import { NavBar } from '@/components/nav-bar';
+import { MantenimientosSubNav } from '@/app/mantenimientos/_components/mantenimientos-subnav';
 import {
   createPlantilla,
   deletePlantilla,
@@ -42,6 +43,12 @@ export default function MantenimientosConfiguracionPage() {
   const [newTipoEquipo, setNewTipoEquipo] = useState('');
   const [newTipoMant, setNewTipoMant] = useState('Preventivo');
   const [newDesc, setNewDesc] = useState('');
+  const [newTipoCampo, setNewTipoCampo] = useState<'checkbox' | 'numero' | 'texto' | 'seleccion'>('checkbox');
+  const [newUnidad, setNewUnidad] = useState('');
+  const [newOpciones, setNewOpciones] = useState('');
+  const [newMin, setNewMin] = useState('');
+  const [newMax, setNewMax] = useState('');
+  const [newObligatorio, setNewObligatorio] = useState(true);
   const [addingPlantilla, setAddingPlantilla] = useState(false);
   const [plantillaMsg, setPlantillaMsg] = useState('');
 
@@ -109,8 +116,26 @@ export default function MantenimientosConfiguracionPage() {
       const nextOrden = plantillas.filter(
         (p) => p.tipo_equipo === newTipoEquipo && p.tipo_mantenimiento === newTipoMant
       ).length;
-      await createPlantilla({ tipo_equipo: newTipoEquipo, tipo_mantenimiento: newTipoMant, descripcion: newDesc.trim(), orden: nextOrden });
+      const opcionesArr = newTipoCampo === 'seleccion'
+        ? newOpciones.split(',').map((o) => o.trim()).filter(Boolean)
+        : null;
+      await createPlantilla({
+        tipo_equipo: newTipoEquipo,
+        tipo_mantenimiento: newTipoMant,
+        descripcion: newDesc.trim(),
+        orden: nextOrden,
+        tipo_campo: newTipoCampo,
+        unidad: newTipoCampo === 'numero' && newUnidad.trim() ? newUnidad.trim() : null,
+        opciones: opcionesArr,
+        valor_min: newTipoCampo === 'numero' && newMin !== '' ? Number(newMin) : null,
+        valor_max: newTipoCampo === 'numero' && newMax !== '' ? Number(newMax) : null,
+        obligatorio: newObligatorio,
+      });
       setNewDesc('');
+      setNewUnidad('');
+      setNewOpciones('');
+      setNewMin('');
+      setNewMax('');
       await loadPlantillas();
     } catch (err) {
       setPlantillaMsg(err instanceof Error ? err.message : 'Error al crear');
@@ -140,10 +165,12 @@ export default function MantenimientosConfiguracionPage() {
     <>
       <NavBar />
       <main className="mx-auto max-w-7xl px-4 py-8">
-        <div className="mb-8">
-          <p className="text-sm uppercase tracking-[0.3em] text-cyan-700 dark:text-cyan-300">Sistema de inventario</p>
-          <h1 className="mt-1 text-3xl font-bold">Configuración de mantenimientos</h1>
+        <div className="mb-6">
+          <p className="text-sm uppercase tracking-[0.3em] text-cyan-700 dark:text-cyan-300">Mantenimiento</p>
+          <h1 className="mt-1 text-3xl font-bold">Configuración</h1>
         </div>
+
+        <MantenimientosSubNav />
 
         {/* ── Frecuencias ──────────────────────────────────────────────────── */}
         <section className="mb-10">
@@ -251,6 +278,86 @@ export default function MantenimientosConfiguracionPage() {
                   className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:border-cyan-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:placeholder-slate-600"
                 />
               </div>
+              <div className="space-y-1">
+                <label className="block text-xs font-medium text-slate-600 dark:text-slate-400">Tipo de dato</label>
+                <select
+                  value={newTipoCampo}
+                  onChange={(e) => setNewTipoCampo(e.target.value as typeof newTipoCampo)}
+                  className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-cyan-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                >
+                  <option value="checkbox">Verificación (Sí/No)</option>
+                  <option value="numero">Número / medición</option>
+                  <option value="texto">Texto</option>
+                  <option value="seleccion">Selección</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Config extra según tipo de dato */}
+            {(newTipoCampo === 'numero' || newTipoCampo === 'seleccion') && (
+              <div className="mt-3 flex flex-wrap items-end gap-3 rounded-lg border border-cyan-200 bg-white/60 p-3 dark:border-cyan-900/40 dark:bg-slate-800/40">
+                {newTipoCampo === 'numero' && (
+                  <>
+                    <div className="space-y-1">
+                      <label className="block text-xs font-medium text-slate-600 dark:text-slate-400">Unidad</label>
+                      <input
+                        type="text"
+                        placeholder="Ej: J, kg, °C, disparos"
+                        value={newUnidad}
+                        onChange={(e) => setNewUnidad(e.target.value)}
+                        className="w-32 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:border-cyan-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:placeholder-slate-600"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="block text-xs font-medium text-slate-600 dark:text-slate-400">Mínimo aceptable</label>
+                      <input
+                        type="number"
+                        step="any"
+                        placeholder="—"
+                        value={newMin}
+                        onChange={(e) => setNewMin(e.target.value)}
+                        className="w-28 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:border-cyan-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:placeholder-slate-600"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="block text-xs font-medium text-slate-600 dark:text-slate-400">Máximo aceptable</label>
+                      <input
+                        type="number"
+                        step="any"
+                        placeholder="—"
+                        value={newMax}
+                        onChange={(e) => setNewMax(e.target.value)}
+                        className="w-28 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:border-cyan-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:placeholder-slate-600"
+                      />
+                    </div>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">Fuera de rango se marca en rojo al técnico.</p>
+                  </>
+                )}
+                {newTipoCampo === 'seleccion' && (
+                  <div className="flex-1 min-w-48 space-y-1">
+                    <label className="block text-xs font-medium text-slate-600 dark:text-slate-400">Opciones (separadas por coma)</label>
+                    <input
+                      type="text"
+                      placeholder="Ej: Operativo, Requiere ajuste, Fuera de servicio"
+                      value={newOpciones}
+                      onChange={(e) => setNewOpciones(e.target.value)}
+                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:border-cyan-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:placeholder-slate-600"
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="mt-3 flex items-center justify-between">
+              <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
+                <input
+                  type="checkbox"
+                  checked={newObligatorio}
+                  onChange={(e) => setNewObligatorio(e.target.checked)}
+                  className="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500 dark:border-slate-600 dark:bg-slate-800"
+                />
+                Obligatorio (bloquea el cierre de la OT si queda vacío)
+              </label>
               <button
                 type="submit"
                 disabled={addingPlantilla || !newDesc.trim() || !newTipoEquipo}
@@ -314,7 +421,19 @@ export default function MantenimientosConfiguracionPage() {
                           {pasos.map((paso, idx) => (
                             <div key={paso.id} className="flex items-center gap-3 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 dark:border-slate-800 dark:bg-slate-800/40">
                               <span className="text-xs font-medium text-slate-400 w-5 text-right">{idx + 1}</span>
-                              <span className="flex-1 text-sm text-slate-700 dark:text-slate-300">{paso.descripcion}</span>
+                              <span className="flex-1 text-sm text-slate-700 dark:text-slate-300">
+                                {paso.descripcion}
+                                {!paso.obligatorio && <span className="ml-1 text-xs text-slate-400">(opcional)</span>}
+                              </span>
+                              {paso.tipo_campo && paso.tipo_campo !== 'checkbox' && (
+                                <span className="rounded-full bg-cyan-100 px-2 py-0.5 text-[10px] font-medium text-cyan-700 dark:bg-cyan-500/20 dark:text-cyan-300">
+                                  {paso.tipo_campo === 'numero'
+                                    ? `número${paso.unidad ? ` (${paso.unidad})` : ''}${paso.valor_min != null || paso.valor_max != null ? ` · ${paso.valor_min != null ? String(Number(paso.valor_min)) : '−∞'}–${paso.valor_max != null ? String(Number(paso.valor_max)) : '∞'}` : ''}`
+                                    : paso.tipo_campo === 'seleccion'
+                                      ? `selección (${paso.opciones?.length ?? 0})`
+                                      : 'texto'}
+                                </span>
+                              )}
                               <button
                                 type="button"
                                 onClick={() => handleDeletePlantilla(paso.id)}

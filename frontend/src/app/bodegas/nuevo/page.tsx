@@ -6,12 +6,15 @@ import { useEffect, useState } from 'react';
 import { NavBar } from '@/components/nav-bar';
 import { createBodega, isAuthenticated, listEmpleados, type EmpleadoRow } from '@/lib/api';
 
+const DOMINIOS = ['IT', 'Bioingeniería', 'General'];
+
 export default function NuevaBodegaPage() {
   const router = useRouter();
   const [nombre, setNombre] = useState('');
   const [sede, setSede] = useState('');
   const [empleadoId, setEmpleadoId] = useState('');
   const [descripcion, setDescripcion] = useState('');
+  const [dominio, setDominio] = useState('IT');
   const [empleados, setEmpleados] = useState<EmpleadoRow[]>([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -31,6 +34,7 @@ export default function NuevaBodegaPage() {
         sede,
         responsable: empleado ? empleado.nombre_completo : null,
         descripcion: descripcion || null,
+        dominio,
       });
       router.push('/bodegas');
     } catch (err) {
@@ -69,6 +73,12 @@ export default function NuevaBodegaPage() {
           <div>
             <label htmlFor="descripcion">Descripción</label>
             <input id="descripcion" value={descripcion} onChange={(e) => setDescripcion(e.target.value)} />
+          </div>
+          <div>
+            <label htmlFor="dominio">Dominio *</label>
+            <select id="dominio" value={dominio} onChange={(e) => setDominio(e.target.value)} required>
+              {DOMINIOS.map((d) => <option key={d} value={d}>{d}</option>)}
+            </select>
           </div>
           {error && <p className="rounded-md bg-red-100 px-3 py-2 text-sm text-red-700 dark:bg-red-500/20 dark:text-red-200">{error}</p>}
           <div className="flex gap-3">

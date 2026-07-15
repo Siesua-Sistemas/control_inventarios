@@ -30,8 +30,11 @@ class ActaEntregaRepository:
         hasta: date | None = None,
         skip: int = 0,
         limit: int | None = 50,
+        dominios_permitidos: list[str] | None = None,
     ) -> tuple[list[ActaEntrega], int]:
         q = self.db.query(ActaEntrega)
+        if dominios_permitidos is not None:
+            q = q.filter(ActaEntrega.dominio.in_(dominios_permitidos))
         if tipo:
             q = q.filter(ActaEntrega.tipo == tipo)
         if sede:

@@ -7,7 +7,7 @@ import { ThemeProvider } from '@/components/theme-provider';
 
 export const metadata: Metadata = {
   title: {
-    default: 'Siesua Inventario',
+    default: 'Siesua Administracion',
     template: '%s · Siesua',
   },
   description: 'Sistema de gestión de inventarios, jornadas y activos de Siesua',

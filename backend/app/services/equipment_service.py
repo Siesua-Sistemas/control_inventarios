@@ -56,10 +56,16 @@ class EquipmentService:
         sede: str | None,
         estado: str | None,
         criticidad: str | None = None,
+        dominio_filter: str | None = None,
+        dominios_permitidos: list[str] | None = None,
         skip: int = 0,
         limit: int | None = None,
     ) -> tuple[list[Equipment], int]:
-        return self.repository.list_equipment(search, tipo, sede, estado, criticidad, skip, limit)
+        return self.repository.list_equipment(
+            search, tipo, sede, estado, criticidad,
+            dominio_filter, dominios_permitidos,
+            skip, limit,
+        )
 
     def get_equipment(self, equipment_id: int) -> Equipment:
         equipment = self.repository.get_by_id(equipment_id)
@@ -109,6 +115,7 @@ class EquipmentService:
             bodega_id=payload.bodega_id,
             estado=payload.estado,
             criticidad=payload.criticidad,
+            dominio=payload.dominio,
             fecha_compra=payload.fecha_compra,
             valor=payload.valor,
             proveedor=payload.proveedor.strip() if payload.proveedor else None,

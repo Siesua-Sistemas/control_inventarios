@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, Column, DateTime, Float, Integer, String
+from sqlalchemy import JSON, Boolean, Column, DateTime, Float, Integer, String
 from sqlalchemy.orm import relationship
 
 from app.database import Base
@@ -19,6 +19,7 @@ class SedeJornada(Base):
     radio_metros = Column(Integer, default=100, nullable=False)
     ip_autorizada = Column(String(45), nullable=True)
     tipo = Column(String(20), default='empresa', nullable=False)  # 'empresa' | 'home_office'
+    horario_config = Column(JSON, nullable=True)                  # config de jornada/almuerzo
     is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)

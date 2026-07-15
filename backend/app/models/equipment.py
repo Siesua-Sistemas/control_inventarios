@@ -24,6 +24,9 @@ class Equipment(Base):
     # Estado
     estado = Column(String(50), nullable=False, default='Disponible')
 
+    # Dominio de inventario (IT | Bioingeniería | General)
+    dominio = Column(String(30), nullable=False, default='IT', server_default='IT')
+
     # Especificaciones técnicas (JSON dinámico por tipo)
     specs = Column(JSON, nullable=True)
 

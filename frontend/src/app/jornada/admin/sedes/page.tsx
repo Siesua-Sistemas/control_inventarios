@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 
 import {
   BodegaRow,
+  HorarioConfig,
   SedeJornadaCreate,
   SedeJornadaOut,
   createSedeJornada,
@@ -27,7 +28,28 @@ const EMPTY_FORM: SedeJornadaCreate = {
   ip_autorizada: '',
   tipo: 'empresa',
   bodega_ids: [],
+  horario_config: null,
 };
+
+type HorarioTipo = 'ninguno' | 'turno_unico' | 'doble_turno';
+
+function _buildHorario(tipo: HorarioTipo, semana: number, sabado: number, finSemana: number): HorarioConfig | null {
+  if (tipo === 'ninguno') return null;
+  if (tipo === 'turno_unico') return {
+    tipo: 'turno_unico',
+    almuerzo_semana_min: semana,
+    almuerzo_sabado_min: sabado,
+    almuerzo_domingo_min: sabado,
+    domingo_regla: 'si_trabaja',
+  };
+  return {
+    tipo: 'doble_turno',
+    almuerzo_semana_min: 0,
+    almuerzo_sabado_min: finSemana,
+    almuerzo_domingo_min: finSemana,
+    domingo_regla: 'si_trabaja',
+  };
+}
 
 function SedeForm({
   inicial,
@@ -46,6 +68,15 @@ function SedeForm({
   const [ipLoading, setIpLoading] = useState(false);
   const [ipMsg, setIpMsg] = useState('');
   const [bodegas, setBodegas] = useState<BodegaRow[]>([]);
+
+  // ── Estado de horario ────────────────────────────────────────────────────────
+  const hcInicial = inicial?.horario_config ?? null;
+  const [horarioTipo, setHorarioTipo] = useState<HorarioTipo>(
+    hcInicial?.tipo ?? 'ninguno'
+  );
+  const [almuerzoSemana, setAlmuerzoSemana] = useState(hcInicial?.almuerzo_semana_min ?? 60);
+  const [almuerzoSabado, setAlmuerzoSabado] = useState(hcInicial?.almuerzo_sabado_min ?? 60);
+  const [almuerzoFinSemana, setAlmuerzoFinSemana] = useState(hcInicial?.almuerzo_sabado_min ?? 60);
 
   useEffect(() => {
     listBodegas().then((r) => setBodegas(r.items)).catch(() => {});
@@ -68,7 +99,10 @@ function SedeForm({
     setSaving(true);
     setError('');
     try {
-      await onGuardar(form);
+      await onGuardar({
+        ...form,
+        horario_config: _buildHorario(horarioTipo, almuerzoSemana, almuerzoSabado, almuerzoFinSemana),
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al guardar');
     } finally {
@@ -117,7 +151,7 @@ function SedeForm({
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form onSubmit={handleSubmit} className="space-y-5">
       {/* Tipo de sede */}
       <div className="grid grid-cols-2 gap-3">
         {([
@@ -168,20 +202,20 @@ function SedeForm({
         })}
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div className="sm:col-span-2">
-          <label htmlFor="nombre">Nombre de la sede *</label>
-          <input id="nombre" type="text" value={form.nombre}
+      <div className="grid gap-5 sm:grid-cols-2">
+        <div className="flex flex-col gap-1.5 sm:col-span-2">
+          <label htmlFor="nombre" className="block text-sm font-medium text-slate-700 dark:text-slate-300">Nombre de la sede *</label>
+          <input id="nombre" type="text" className="w-full" value={form.nombre}
             onChange={(e) => set('nombre', e.target.value)} required
             placeholder={form.tipo === 'home_office' ? 'Ej: Home Office María López' : 'Ej: VIP109, Unicentro'} />
         </div>
-        <div>
-          <label htmlFor="ciudad">Ciudad</label>
-          <input id="ciudad" type="text" value={form.ciudad ?? ''}
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="ciudad" className="block text-sm font-medium text-slate-700 dark:text-slate-300">Ciudad</label>
+          <input id="ciudad" type="text" className="w-full" value={form.ciudad ?? ''}
             onChange={(e) => set('ciudad', e.target.value)} placeholder="Bogotá" />
         </div>
-        <div>
-          <label htmlFor="ip_autorizada">IP autorizada</label>
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="ip_autorizada" className="block text-sm font-medium text-slate-700 dark:text-slate-300">IP autorizada</label>
           <div className="flex gap-2">
             <input id="ip_autorizada" type="text" value={form.ip_autorizada ?? ''}
               onChange={(e) => set('ip_autorizada', e.target.value)}
@@ -205,24 +239,24 @@ function SedeForm({
             </button>
           </div>
           {ipMsg && (
-            <p className={`mt-1 text-xs ${ipMsg.startsWith('No') ? 'text-red-500' : 'text-emerald-600 dark:text-emerald-400'}`}>
+            <p className={`text-xs ${ipMsg.startsWith('No') ? 'text-red-500' : 'text-emerald-600 dark:text-emerald-400'}`}>
               {ipMsg}
             </p>
           )}
         </div>
-        <div className="sm:col-span-2">
-          <label htmlFor="direccion">Dirección</label>
-          <input id="direccion" type="text" value={form.direccion ?? ''}
+        <div className="flex flex-col gap-1.5 sm:col-span-2">
+          <label htmlFor="direccion" className="block text-sm font-medium text-slate-700 dark:text-slate-300">Dirección</label>
+          <input id="direccion" type="text" className="w-full" value={form.direccion ?? ''}
             onChange={(e) => set('direccion', e.target.value)}
             placeholder="Cra 15 # 97-20, Bogotá" />
         </div>
       </div>
 
       {/* Coordenadas y radio */}
-      <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/50">
+      <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800/60">
         <div className="mb-3 flex items-center justify-between gap-3 flex-wrap">
-          <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-            Geovalla
+          <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+            Geovalla GPS
           </p>
           <button
             type="button"
@@ -247,21 +281,21 @@ function SedeForm({
           </p>
         )}
         <div className="grid gap-4 sm:grid-cols-3">
-          <div>
-            <label htmlFor="lat">Latitud *</label>
-            <input id="lat" type="number" step="any" value={form.latitud}
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="lat" className="block text-sm font-medium text-slate-700 dark:text-slate-300">Latitud *</label>
+            <input id="lat" type="number" step="any" className="w-full" value={form.latitud}
               onChange={(e) => set('latitud', parseFloat(e.target.value) || 0)} required
               placeholder="4.6940" />
           </div>
-          <div>
-            <label htmlFor="lon">Longitud *</label>
-            <input id="lon" type="number" step="any" value={form.longitud}
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="lon" className="block text-sm font-medium text-slate-700 dark:text-slate-300">Longitud *</label>
+            <input id="lon" type="number" step="any" className="w-full" value={form.longitud}
               onChange={(e) => set('longitud', parseFloat(e.target.value) || 0)} required
               placeholder="-74.0750" />
           </div>
-          <div>
-            <label htmlFor="radio">Radio (metros) *</label>
-            <input id="radio" type="number" min="10" max="5000" value={form.radio_metros}
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="radio" className="block text-sm font-medium text-slate-700 dark:text-slate-300">Radio (metros) *</label>
+            <input id="radio" type="number" min="10" max="5000" className="w-full" value={form.radio_metros}
               onChange={(e) => set('radio_metros', parseInt(e.target.value) || 100)} required />
           </div>
         </div>
@@ -271,12 +305,12 @@ function SedeForm({
       </div>
 
       {/* Bodegas asociadas — solo para sedes empresa */}
-      {form.tipo === 'empresa' && <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/50">
-        <div className="mb-2 flex items-center justify-between">
-          <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+      {form.tipo === 'empresa' && <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800/60">
+        <div className="mb-3 flex items-center justify-between">
+          <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">
             Bodegas asociadas
           </p>
-          <span className="text-xs text-slate-400">Máximo 2</span>
+          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500 dark:bg-slate-700 dark:text-slate-400">Máximo 2</span>
         </div>
         {bodegas.length === 0 ? (
           <p className="text-xs text-slate-400">No hay bodegas disponibles.</p>
@@ -312,20 +346,101 @@ function SedeForm({
         )}
       </div>}
 
+      {/* Horario de jornada */}
+      <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800/60">
+        <p className="mb-3 text-sm font-semibold text-slate-800 dark:text-slate-100">Horario de jornada</p>
+
+        {/* Selector de tipo */}
+        <div className="mb-4 flex flex-wrap gap-2">
+          {([
+            { value: 'ninguno', label: 'Sin horario' },
+            { value: 'turno_unico', label: 'Turno único' },
+            { value: 'doble_turno', label: 'Doble turno' },
+          ] as const).map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => {
+                setHorarioTipo(opt.value);
+                if (opt.value === 'turno_unico') { setAlmuerzoSemana(60); setAlmuerzoSabado(60); }
+                if (opt.value === 'doble_turno') { setAlmuerzoFinSemana(60); }
+              }}
+              className={`rounded-full px-4 py-1.5 text-xs font-semibold transition-colors ${
+                horarioTipo === opt.value
+                  ? 'bg-cyan-600 text-white dark:bg-cyan-500 dark:text-slate-950'
+                  : 'border border-slate-300 bg-white text-slate-600 hover:border-cyan-400 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300'
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Config turno único */}
+        {horarioTipo === 'turno_unico' && (
+          <div className="space-y-3">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-medium text-slate-600 dark:text-slate-400">Almuerzo Lun–Vie (min)</label>
+                <input type="number" min={0} max={120} value={almuerzoSemana}
+                  onChange={(e) => setAlmuerzoSemana(parseInt(e.target.value) || 0)}
+                  className="w-full" />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-medium text-slate-600 dark:text-slate-400">Almuerzo Sábado (min)</label>
+                <input type="number" min={0} max={120} value={almuerzoSabado}
+                  onChange={(e) => setAlmuerzoSabado(parseInt(e.target.value) || 0)}
+                  className="w-full" />
+              </div>
+            </div>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Domingo: se descuenta el almuerzo <strong>cuando haya registro</strong> · igual al sábado ({almuerzoSabado} min)
+            </p>
+          </div>
+        )}
+
+        {/* Config doble turno */}
+        {horarioTipo === 'doble_turno' && (
+          <div className="space-y-3">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-medium text-slate-600 dark:text-slate-400">Almuerzo Lun–Vie</label>
+                <div className="flex h-10 items-center rounded-lg border border-slate-200 bg-slate-100 px-3 text-sm text-slate-400 dark:border-slate-700 dark:bg-slate-800">
+                  0 min (sin pausa)
+                </div>
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-medium text-slate-600 dark:text-slate-400">Almuerzo fin de semana (min)</label>
+                <input type="number" min={0} max={120} value={almuerzoFinSemana}
+                  onChange={(e) => setAlmuerzoFinSemana(parseInt(e.target.value) || 0)}
+                  className="w-full" />
+              </div>
+            </div>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Sábado y domingo: se descuenta el almuerzo <strong>cuando haya registro</strong>. La rotación quincenal es individual entre las asesoras.
+            </p>
+          </div>
+        )}
+
+        {horarioTipo === 'ninguno' && (
+          <p className="text-xs text-slate-400 dark:text-slate-500">Sin configuración de horario. El tiempo mostrado en asistencia será el tiempo bruto registrado.</p>
+        )}
+      </div>
+
       {error && (
-        <p className="rounded-md bg-red-100 px-3 py-2 text-sm text-red-700 dark:bg-red-500/20 dark:text-red-200">
+        <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-300">
           {error}
         </p>
       )}
 
-      <div className="flex justify-end gap-3">
-        <button type="button" onClick={onCancelar}
-          className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800">
-          Cancelar
-        </button>
+      <div className="flex items-center gap-3 pt-1">
         <button type="submit" disabled={saving}
-          className="rounded-lg bg-cyan-600 px-5 py-2 text-sm font-semibold text-white hover:bg-cyan-700 disabled:opacity-60 dark:bg-cyan-500 dark:text-slate-950">
+          className="px-6 py-2.5 rounded-xl bg-cyan-600 text-sm font-semibold text-white hover:bg-cyan-700 disabled:opacity-60 dark:bg-cyan-500 dark:text-slate-950">
           {saving ? 'Guardando…' : 'Guardar sede'}
+        </button>
+        <button type="button" onClick={onCancelar}
+          className="px-5 py-2.5 rounded-xl bg-slate-100 text-sm font-medium text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700">
+          Cancelar
         </button>
       </div>
     </form>
@@ -364,6 +479,11 @@ function SedeCard({
                   <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 21h19.5m-18-18v18m10.5-18v18m6-13.5V21M6.75 6.75h.75m-.75 3h.75m-.75 3h.75m3-6h.75m-.75 3h.75m-.75 3h.75M6.75 21v-3.375c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21M3 3h12m-.75 4.5H21m-3.75 3.75h.008v.008h-.008v-.008zm0 3h.008v.008h-.008v-.008zm0 3h.008v.008h-.008v-.008z" />
                 </svg>
                 Sede empresa
+              </span>
+            )}
+            {sede.horario_config && (
+              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                {sede.horario_config.tipo === 'turno_unico' ? 'Turno único' : 'Doble turno'}
               </span>
             )}
             {sede.ciudad && (
@@ -552,6 +672,7 @@ export default function SedesAdminPage() {
                 ip_autorizada: editando.ip_autorizada ?? '',
                 tipo: editando.tipo,
                 bodega_ids: editando.bodegas.map((b) => b.id),
+                horario_config: editando.horario_config,
               } : undefined}
               onGuardar={modo === 'nueva' ? handleNueva : handleEditar}
               onCancelar={() => { setModo('lista'); setEditando(null); }}

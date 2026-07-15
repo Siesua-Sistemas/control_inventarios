@@ -2,9 +2,10 @@
 
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { useAuth } from '@/components/auth-provider';
+import { EmpleadoAutocomplete } from '@/components/empleado-autocomplete';
 import { NavBar } from '@/components/nav-bar';
 import { SignaturePad } from '@/components/signature-pad';
 import {
@@ -27,8 +28,16 @@ export default function EntregaBodegaPage() {
   const [error, setError] = useState('');
   const [step, setStep] = useState<Step>('checklist');
 
-  // Checklist
+  // Checklist: checked = OK sin observacion
   const [checked, setChecked] = useState<Set<number>>(new Set());
+  // Novedades por equipo id
+  const [novedades, setNovedades] = useState<Record<number, string>>({});
+  // Qué textarea de novedad está expandido (id del equipo)
+  const [openNovedad, setOpenNovedad] = useState<number | null>(null);
+  const novedadRefs = useRef<Record<number, HTMLTextAreaElement | null>>({});
+
+  // Equipos confirmados para entrega (se fija al pasar a firmas)
+  const [equiposParaEntrega, setEquiposParaEntrega] = useState<EquipmentRow[]>([]);
 
   // Firmas
   const [entregaNombre, setEntregaNombre] = useState('');
@@ -80,10 +89,16 @@ export default function EntregaBodegaPage() {
     );
   }
 
-  const allChecked = checked.size === data.equipos.length && data.equipos.length > 0;
+  // Un equipo está "seleccionado" si está marcado OK o tiene novedad registrada
+  const isSelected = (eqId: number) => checked.has(eqId) || (novedades[eqId] ?? '').trim().length > 0;
+  const selectedCount = data.equipos.filter((e) => isSelected(e.id)).length;
+  const anySelected = selectedCount > 0;
+  const isPartial = selectedCount < data.equipos.length;
+  const anyNovedad = Object.values(novedades).some((n) => n.trim().length > 0);
+
   const today = new Date().toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' });
 
-  // Agrupar equipos: cada dispositivo padre junto con sus periféricos/hijos asociados
+  // Agrupar equipos: cada dispositivo padre junto con sus periféricos/hijos
   const equipoIds = new Set(data.equipos.map((e) => e.id));
   const childrenByParent = new Map<number, EquipmentRow[]>();
   for (const eq of data.equipos) {
@@ -110,60 +125,72 @@ export default function EntregaBodegaPage() {
     });
   };
 
-  const checkAll = () => {
-    if (allChecked) setChecked(new Set());
-    else setChecked(new Set(data.equipos.map((e) => e.id)));
+  const toggleNovedad = (equipoId: number) => {
+    if (openNovedad === equipoId) {
+      // Cerrar: si está vacía, solo cerrar
+      setOpenNovedad(null);
+    } else {
+      setOpenNovedad(equipoId);
+      // Si tenía check, quitarlo (novedad es alternativa)
+      setChecked((prev) => {
+        const next = new Set(prev);
+        next.delete(equipoId);
+        return next;
+      });
+      setTimeout(() => novedadRefs.current[equipoId]?.focus(), 50);
+    }
   };
 
-  const renderEquipoRow = (eq: EquipmentRow, isChild: boolean, peripheralCount = 0) => {
-    const isChecked = checked.has(eq.id);
-    return (
-      <label
-        key={eq.id}
-        className={`flex cursor-pointer items-center gap-4 px-6 py-4 transition-colors ${isChild ? 'pl-14' : ''} ${
-          isChecked
-            ? 'bg-emerald-50 dark:bg-emerald-500/5'
-            : isChild
-            ? 'bg-slate-50 hover:bg-slate-100 dark:bg-slate-950/40 dark:hover:bg-slate-900'
-            : 'hover:bg-slate-100 dark:hover:bg-slate-900'
-        }`}
-      >
-        <input
-          type="checkbox"
-          checked={isChecked}
-          onChange={() => toggleCheck(eq.id)}
-          className="h-5 w-5 shrink-0 cursor-pointer rounded border-slate-300 dark:border-slate-600 accent-emerald-500"
-        />
-        {isChild && <span className="shrink-0 text-slate-400 dark:text-slate-600">↳</span>}
-        <div className="grid flex-1 grid-cols-4 gap-3 items-center min-w-0">
-          <div className="min-w-0">
-            <p className="text-xs text-slate-500">Código</p>
-            <p className="flex items-center gap-2 font-mono text-sm font-bold text-cyan-600 dark:text-cyan-400 truncate">
-              {eq.codigo_interno}
-              {peripheralCount > 0 && (
-                <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-semibold text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300">
-                  +{peripheralCount} periférico{peripheralCount > 1 ? 's' : ''}
-                </span>
-              )}
-            </p>
-          </div>
-          <div className="min-w-0">
-            <p className="text-xs text-slate-500">Tipo</p>
-            <p className="text-sm text-slate-700 dark:text-slate-300 truncate">{eq.tipo}</p>
-          </div>
-          <div className="min-w-0">
-            <p className="text-xs text-slate-500">Marca / Modelo</p>
-            <p className="text-sm font-semibold text-slate-900 dark:text-white truncate">{eq.marca} {eq.modelo}</p>
-          </div>
-          <div className="min-w-0">
-            <span className={`inline-block rounded-full border px-2.5 py-0.5 text-xs font-semibold ${ESTADO_COLORS[eq.estado] ?? 'bg-slate-200 text-slate-700 border-slate-300 dark:bg-slate-700 dark:text-slate-300 dark:border-slate-600'}`}>
-              {eq.estado}
-            </span>
-          </div>
-        </div>
-        {isChecked && <span className="shrink-0 text-emerald-600 dark:text-emerald-400">✓</span>}
-      </label>
-    );
+  const setNovedad = (equipoId: number, value: string) => {
+    setNovedades((prev) => ({ ...prev, [equipoId]: value }));
+  };
+
+  const checkAll = () => {
+    const allOk = data.equipos.every((e) => checked.has(e.id));
+    if (allOk) {
+      setChecked(new Set());
+      setNovedades({});
+      setOpenNovedad(null);
+    } else {
+      const allIds = new Set(data.equipos.map((e) => e.id));
+      setChecked(allIds);
+      setNovedades({});
+      setOpenNovedad(null);
+    }
+  };
+
+  const selectAll = () => {
+    const allIds = new Set(data.equipos.map((e) => e.id));
+    setChecked(allIds);
+    setNovedades({});
+    setOpenNovedad(null);
+  };
+
+  const handleEntregaTotal = () => {
+    // Fija TODOS los equipos para entrega e ignora la selección actual
+    setEquiposParaEntrega(data.equipos);
+    setStep('firmas');
+  };
+
+  const buildNovedadSummary = () => {
+    const lines: string[] = [];
+    for (const eq of data.equipos) {
+      const n = (novedades[eq.id] ?? '').trim();
+      if (n) {
+        lines.push(`• [${eq.codigo_interno}] ${eq.tipo} ${eq.marca} ${eq.modelo}: ${n}`);
+      }
+    }
+    return lines.join('\n');
+  };
+
+  const handleContinuarAFirmas = () => {
+    const seleccionados = data.equipos.filter((e) => isSelected(e.id));
+    setEquiposParaEntrega(seleccionados);
+    if (anyNovedad) {
+      const summary = buildNovedadSummary();
+      setObservaciones((prev) => prev.trim() ? `NOVEDADES:\n${summary}\n\n${prev}` : `NOVEDADES:\n${summary}`);
+    }
+    setStep('firmas');
   };
 
   const handleGuardar = async () => {
@@ -174,19 +201,32 @@ export default function EntregaBodegaPage() {
     setSaveError('');
     setStep('guardando');
     try {
-      const snapshot = data.equipos.map((e) => ({
-        id: e.id,
-        codigo_interno: e.codigo_interno,
-        serial: e.serial,
-        tipo: e.tipo,
-        marca: e.marca,
-        modelo: e.modelo,
-        estado: e.estado,
-      }));
+      const snapshot = equiposParaEntrega.map((e) => {
+        const novedad = (novedades[e.id] ?? '').trim();
+        return {
+          id: e.id,
+          codigo_interno: e.codigo_interno,
+          serial: e.serial,
+          tipo: e.tipo,
+          marca: e.marca,
+          modelo: e.modelo,
+          estado: e.estado,
+          ...(novedad ? { novedad } : {}),
+        };
+      });
+
+      const esTotal = equiposParaEntrega.length === data.equipos.length;
+      const tieneNovedades = equiposParaEntrega.some((e) => (novedades[e.id] ?? '').trim().length > 0);
+      const sufijos = [
+        !esTotal ? 'Entrega Parcial' : null,
+        tieneNovedades ? 'Con Novedad' : null,
+      ].filter(Boolean).join(' — ');
+      const titulo = sufijos ? `${data.bodega.nombre} — ${sufijos}` : data.bodega.nombre;
+
       const acta = await createActaEntrega({
         tipo: 'bodega',
         sede: data.bodega.sede,
-        titulo: data.bodega.nombre,
+        titulo,
         entrega_nombre: entregaNombre.trim(),
         recibe_nombre: recibeNombre.trim(),
         firma_entrega: firmaEntrega ?? undefined,
@@ -209,9 +249,13 @@ export default function EntregaBodegaPage() {
       <>
         <NavBar />
         <main className="mx-auto max-w-xl px-4 py-16 text-center">
-          <div className="mb-6 text-5xl">✅</div>
-          <h1 className="text-2xl font-bold">Acta guardada</h1>
-          <p className="mt-2 text-slate-600 dark:text-slate-400">El acta de entrega ha sido registrada correctamente.</p>
+          <div className="mb-6 text-5xl">{anyNovedad ? '⚠️' : '✅'}</div>
+          <h1 className="text-2xl font-bold">Acta guardada{anyNovedad ? ' — Con Novedad' : ''}</h1>
+          <p className="mt-2 text-slate-600 dark:text-slate-400">
+            {anyNovedad
+              ? 'El acta fue registrada con novedades. Revisa la impresión para el detalle.'
+              : 'El acta de entrega ha sido registrada correctamente.'}
+          </p>
           <div className="mt-8 flex flex-col gap-3">
             <Link
               href={`/actas/${actaId}/imprimir`}
@@ -251,6 +295,126 @@ export default function EntregaBodegaPage() {
       </>
     );
   }
+
+  const renderEquipoRow = (eq: EquipmentRow, isChild: boolean, peripheralCount = 0) => {
+    const ok = checked.has(eq.id);
+    const novedad = novedades[eq.id] ?? '';
+    const hasNovedad = novedad.trim().length > 0;
+    const novedadOpen = openNovedad === eq.id;
+    const reviewed = isSelected(eq.id);
+
+    return (
+      <div key={eq.id} className={`border-b border-slate-200 dark:border-slate-800 last:border-0 ${isChild ? 'bg-slate-50 dark:bg-slate-950/40' : ''}`}>
+        {/* Fila principal */}
+        <div
+          className={`flex items-center gap-4 px-6 py-3 transition-colors ${isChild ? 'pl-14' : ''} ${
+            hasNovedad
+              ? 'bg-amber-50 dark:bg-amber-500/5'
+              : ok
+              ? 'bg-emerald-50 dark:bg-emerald-500/5'
+              : 'hover:bg-slate-100 dark:hover:bg-slate-900'
+          }`}
+        >
+          {isChild && <span className="shrink-0 text-slate-400 dark:text-slate-600">↳</span>}
+
+          {/* Checkbox OK */}
+          <input
+            type="checkbox"
+            checked={ok}
+            disabled={hasNovedad}
+            onChange={() => toggleCheck(eq.id)}
+            title={hasNovedad ? 'Quita la novedad para marcar como OK' : 'Marcar como revisado'}
+            className="h-5 w-5 shrink-0 cursor-pointer rounded border-slate-300 dark:border-slate-600 accent-emerald-500 disabled:cursor-not-allowed disabled:opacity-40"
+          />
+
+          {/* Info del equipo */}
+          <div className="grid flex-1 grid-cols-4 gap-3 items-center min-w-0">
+            <div className="min-w-0">
+              <p className="text-xs text-slate-500">Código</p>
+              <p className="flex items-center gap-2 font-mono text-sm font-bold text-cyan-600 dark:text-cyan-400 truncate">
+                {eq.codigo_interno}
+                {peripheralCount > 0 && (
+                  <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-semibold text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300">
+                    +{peripheralCount} periférico{peripheralCount > 1 ? 's' : ''}
+                  </span>
+                )}
+              </p>
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs text-slate-500">Tipo</p>
+              <p className="text-sm text-slate-700 dark:text-slate-300 truncate">{eq.tipo}</p>
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs text-slate-500">Marca / Modelo</p>
+              <p className="text-sm font-semibold text-slate-900 dark:text-white truncate">{eq.marca} {eq.modelo}</p>
+            </div>
+            <div className="min-w-0">
+              <span className={`inline-block rounded-full border px-2.5 py-0.5 text-xs font-semibold ${ESTADO_COLORS[eq.estado] ?? 'bg-slate-200 text-slate-700 border-slate-300 dark:bg-slate-700 dark:text-slate-300 dark:border-slate-600'}`}>
+                {eq.estado}
+              </span>
+            </div>
+          </div>
+
+          {/* Estado de revisión + botón novedad */}
+          <div className="flex shrink-0 items-center gap-2">
+            {hasNovedad && (
+              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-500/20 dark:text-amber-300">
+                ⚠ Novedad
+              </span>
+            )}
+            {ok && !hasNovedad && (
+              <span className="text-emerald-600 dark:text-emerald-400">✓</span>
+            )}
+            <button
+              onClick={() => toggleNovedad(eq.id)}
+              title={hasNovedad ? 'Ver / editar novedad' : 'Registrar novedad'}
+              className={`rounded px-2 py-1 text-xs font-medium transition-colors ${
+                hasNovedad || novedadOpen
+                  ? 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-500/20 dark:text-amber-300 dark:hover:bg-amber-500/30'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700'
+              }`}
+            >
+              {novedadOpen ? '▲ Novedad' : '⚠ Novedad'}
+            </button>
+          </div>
+        </div>
+
+        {/* Panel de novedad (expandible) */}
+        {novedadOpen && (
+          <div className={`px-6 pb-3 pt-1 ${isChild ? 'pl-14' : ''} bg-amber-50 dark:bg-amber-500/5 border-t border-amber-200 dark:border-amber-500/20`}>
+            <p className="mb-1 text-xs font-medium text-amber-700 dark:text-amber-400">
+              Descripción de la novedad — {eq.codigo_interno} · {eq.tipo}
+            </p>
+            <textarea
+              ref={(el) => { novedadRefs.current[eq.id] = el; }}
+              rows={2}
+              value={novedad}
+              onChange={(e) => setNovedad(eq.id, e.target.value)}
+              placeholder="Ej: pantalla con rayones, cable de poder faltante, teclado sin tecla..."
+              className="w-full rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:border-amber-500 focus:outline-none resize-none dark:border-amber-500/40 dark:bg-slate-900 dark:text-slate-100 dark:placeholder-slate-600"
+            />
+            <div className="mt-1.5 flex items-center justify-between">
+              <p className="text-[10px] text-amber-600 dark:text-amber-400">
+                Este equipo quedará registrado con novedad en el acta de entrega.
+              </p>
+              <button
+                onClick={() => {
+                  if (!novedad.trim()) {
+                    // Si está vacía, cerrar sin guardar
+                    setNovedad(eq.id, '');
+                  }
+                  setOpenNovedad(null);
+                }}
+                className="text-xs text-amber-700 hover:underline dark:text-amber-400"
+              >
+                Listo
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <>
@@ -294,20 +458,29 @@ export default function EntregaBodegaPage() {
             <div className="bg-white px-6 py-4 border-b border-slate-200 dark:bg-slate-900 dark:border-slate-800 flex items-center justify-between">
               <div>
                 <p className="font-semibold">Revisión de inventario</p>
-                <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">Verifica y marca cada equipo antes de continuar</p>
+                <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
+                  Marca ✓ si el equipo está OK, o usa ⚠ Novedad para registrar una observación
+                </p>
               </div>
               <div className="flex items-center gap-3">
-                <span className="text-sm text-slate-600 dark:text-slate-400">{checked.size}/{data.equipos.length}</span>
+                <span className="text-sm text-slate-600 dark:text-slate-400">
+                  {selectedCount}/{data.equipos.length} sel.
+                  {anyNovedad && (
+                    <span className="ml-1.5 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700 dark:bg-amber-500/20 dark:text-amber-300">
+                      {Object.values(novedades).filter((n) => n.trim()).length} novedad
+                    </span>
+                  )}
+                </span>
                 <button
                   onClick={checkAll}
                   className="rounded-lg border border-slate-300 bg-slate-100 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 transition-colors"
                 >
-                  {allChecked ? 'Desmarcar todo' : 'Marcar todo'}
+                  {data.equipos.every((e) => checked.has(e.id)) ? 'Desmarcar todo' : 'Marcar todo OK'}
                 </button>
               </div>
             </div>
 
-            <div className="divide-y divide-slate-200 dark:divide-slate-800">
+            <div className="divide-y-0">
               {topLevelEquipos.map((eq) => {
                 const children = childrenByParent.get(eq.id) ?? [];
                 return (
@@ -319,18 +492,31 @@ export default function EntregaBodegaPage() {
               })}
             </div>
 
-            <div className="bg-slate-100 border-t border-slate-200 dark:bg-slate-950 dark:border-slate-800 px-6 py-4 flex items-center justify-between">
+            <div className="bg-slate-100 border-t border-slate-200 dark:bg-slate-950 dark:border-slate-800 px-6 py-4 flex items-center justify-between gap-3">
               <p className="text-xs text-slate-500">
-                {allChecked
-                  ? 'Todos los equipos revisados. Listo para continuar.'
-                  : `Faltan ${data.equipos.length - checked.size} por revisar.`}
+                {data.equipos.length === 1
+                  ? anyNovedad ? 'Equipo con novedad registrada.' : 'Listo para continuar.'
+                  : isPartial
+                  ? `${selectedCount} de ${data.equipos.length} equipos seleccionados.`
+                  : selectedCount === 0
+                  ? 'Sin selección: se entregarán todos los equipos.'
+                  : anyNovedad
+                  ? `Todos · ${Object.values(novedades).filter((n) => n.trim()).length} con novedad.`
+                  : 'Todos los equipos seleccionados.'}
               </p>
               <button
-                onClick={() => setStep('firmas')}
-                disabled={!allChecked}
-                className="rounded-lg bg-indigo-600 px-5 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                onClick={isPartial ? handleContinuarAFirmas : handleEntregaTotal}
+                className={`rounded-lg px-5 py-2 text-sm font-semibold text-white transition-colors ${
+                  isPartial
+                    ? 'bg-orange-500 hover:bg-orange-400'
+                    : 'bg-emerald-600 hover:bg-emerald-500'
+                }`}
               >
-                Continuar a firmas →
+                {data.equipos.length === 1
+                  ? 'Continuar a firmas →'
+                  : isPartial
+                  ? `Entrega parcial (${selectedCount}/${data.equipos.length}) →`
+                  : `Entrega total (${data.equipos.length}) →`}
               </button>
             </div>
           </div>
@@ -339,35 +525,51 @@ export default function EntregaBodegaPage() {
         {/* ─── Paso 2: Firmas ────────────────────────────────────────────────── */}
         {step === 'firmas' && (
           <div className="space-y-6">
+            {/* Resumen de lo que se entrega */}
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-800/50">
+              <p className="mb-1 text-xs font-semibold uppercase tracking-widest text-slate-500 dark:text-slate-400">
+                {equiposParaEntrega.length === data.equipos.length ? 'Entrega total' : `Entrega parcial · ${equiposParaEntrega.length} de ${data.equipos.length} equipos`}
+              </p>
+              {equiposParaEntrega.some((e) => (novedades[e.id] ?? '').trim()) && (
+                <>
+                  <p className="mt-2 text-xs font-medium text-amber-700 dark:text-amber-400">⚠ Equipos con novedad:</p>
+                  <ul className="mt-0.5 space-y-0.5">
+                    {equiposParaEntrega.filter((e) => (novedades[e.id] ?? '').trim()).map((e) => (
+                      <li key={e.id} className="text-xs text-amber-700 dark:text-amber-300">
+                        <span className="font-mono font-bold">{e.codigo_interno}</span> — {(novedades[e.id] ?? '').trim()}
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </div>
+
             {/* Datos del acta */}
             <div className="rounded-2xl border border-slate-200 bg-white p-6 dark:border-slate-700 dark:bg-slate-900">
               <p className="mb-4 text-xs font-semibold uppercase tracking-widest text-slate-600 dark:text-slate-400">Datos del acta</p>
               <div className="grid grid-cols-2 gap-4">
-                <label className="flex flex-col gap-1.5">
-                  <span className="text-xs text-slate-600 dark:text-slate-400">Asesora que entrega *</span>
-                  <input
-                    value={entregaNombre}
-                    onChange={(e) => setEntregaNombre(e.target.value)}
-                    placeholder="Nombre completo"
-                    className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:border-indigo-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:placeholder-slate-600"
-                  />
-                </label>
-                <label className="flex flex-col gap-1.5">
-                  <span className="text-xs text-slate-600 dark:text-slate-400">Asesora que recibe *</span>
-                  <input
-                    value={recibeNombre}
-                    onChange={(e) => setRecibeNombre(e.target.value)}
-                    placeholder="Nombre completo"
-                    className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:border-indigo-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:placeholder-slate-600"
-                  />
-                </label>
+                <EmpleadoAutocomplete
+                  label="Asesora que entrega"
+                  required
+                  value={entregaNombre}
+                  onChange={setEntregaNombre}
+                  sede={data.bodega.sede}
+                  placeholder="Buscar por nombre..."
+                />
+                <EmpleadoAutocomplete
+                  label="Asesora que recibe"
+                  required
+                  value={recibeNombre}
+                  onChange={setRecibeNombre}
+                  placeholder="Buscar por nombre..."
+                />
               </div>
               <label className="mt-4 flex flex-col gap-1.5">
-                <span className="text-xs text-slate-600 dark:text-slate-400">Observaciones (opcional)</span>
+                <span className="text-xs text-slate-600 dark:text-slate-400">Observaciones generales</span>
                 <textarea
                   value={observaciones}
                   onChange={(e) => setObservaciones(e.target.value)}
-                  rows={2}
+                  rows={3}
                   placeholder="Novedades, estado general, aclaraciones..."
                   className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:border-indigo-500 focus:outline-none resize-none dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:placeholder-slate-600"
                 />
@@ -405,13 +607,21 @@ export default function EntregaBodegaPage() {
               </button>
               <div className="flex items-center gap-3">
                 <p className="text-xs text-slate-500">
-                  {today} · {data.total} equipos · {data.bodega.sede}
+                  {today} · {equiposParaEntrega.length} equipo{equiposParaEntrega.length !== 1 ? 's' : ''}
+                  {equiposParaEntrega.length < data.equipos.length ? ` (parcial)` : ''}
+                  {equiposParaEntrega.some((e) => (novedades[e.id] ?? '').trim()) ? ' · ⚠ Con Novedad' : ''}
                 </p>
                 <button
                   onClick={handleGuardar}
-                  className="rounded-lg bg-emerald-600 px-6 py-2 text-sm font-semibold text-white hover:bg-emerald-500 transition-colors"
+                  className={`rounded-lg px-6 py-2 text-sm font-semibold text-white transition-colors ${
+                    equiposParaEntrega.some((e) => (novedades[e.id] ?? '').trim())
+                      ? 'bg-amber-500 hover:bg-amber-400'
+                      : 'bg-emerald-600 hover:bg-emerald-500'
+                  }`}
                 >
-                  Confirmar y guardar acta ✓
+                  {equiposParaEntrega.some((e) => (novedades[e.id] ?? '').trim())
+                    ? 'Confirmar — Con Novedad ⚠'
+                    : 'Confirmar y guardar acta ✓'}
                 </button>
               </div>
             </div>

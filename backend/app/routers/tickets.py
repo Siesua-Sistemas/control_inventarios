@@ -6,10 +6,11 @@ from sqlalchemy import or_, select, func
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.dependencies import get_current_user, require_permissions
+from app.dependencies import get_current_user, get_user_dominios, require_permissions
 from app.models.ticket import Ticket, TicketComentario
 from app.models.ticket_imagen import TicketImagen
 from app.models.equipment import Equipment
+from app.models.user import User
 from app.schemas.portal import (
     ComentarioCreate,
     ComentarioOut,
@@ -38,6 +39,7 @@ def _ticket_out(ticket: Ticket) -> TicketOut:
             marca=e.marca,
             modelo=e.modelo,
             estado=e.estado,
+            dominio=e.dominio,
         )
         for e in ticket.equipos
     ]
@@ -63,6 +65,7 @@ def _ticket_out(ticket: Ticket) -> TicketOut:
         documento_identidad=ticket.documento_identidad,
         empleado_nombre=ticket.empleado_nombre,
         sede=ticket.sede,
+        dominio=ticket.dominio,
         categoria=ticket.categoria,
         tipo_solicitud=ticket.tipo_solicitud,
         asunto=ticket.asunto,
@@ -84,13 +87,19 @@ def list_tickets(
     sede: str | None = Query(None),
     estado: str | None = Query(None),
     categoria: str | None = Query(None),
+    dominio: str | None = Query(None),
     documento: str | None = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
-    _user=Depends(require_permissions('tickets:read')),
+    user=Depends(require_permissions('tickets:read')),
 ):
     q = select(Ticket)
+    dominios_permitidos = get_user_dominios(user)
+    if dominios_permitidos is not None:
+        q = q.where(Ticket.dominio.in_(dominios_permitidos))
+    if dominio:
+        q = q.where(Ticket.dominio == dominio)
     if sede:
         q = q.where(Ticket.sede == sede)
     if estado:
@@ -116,6 +125,7 @@ def get_mis_tickets(
     estados_activos = ('abierto', 'en_revision', 'en_proceso', 'pendiente_usuario')
     user_perms = {p.code for role in user.roles for p in role.permissions}
     is_supervisor = user.is_superuser or 'tickets:write' in user_perms
+    dominios_permitidos = get_user_dominios(user)
 
     if is_supervisor:
         q = select(Ticket).where(
@@ -127,8 +137,35 @@ def get_mis_tickets(
             or_(Ticket.asignado_a_id == user.id, Ticket.asignado_a_id.is_(None)),
         ).order_by(Ticket.updated_at.desc())
 
+    if dominios_permitidos is not None:
+        q = q.where(Ticket.dominio.in_(dominios_permitidos))
+
     items = db.execute(q).scalars().all()
     return {'items': [_ticket_out(t) for t in items], 'total': len(items)}
+
+
+@router.get('/asignables')
+def list_asignables(
+    dominio: str | None = Query(None),
+    db: Session = Depends(get_db),
+    _user=Depends(require_permissions('tickets:write')),
+):
+    """Técnicos (tickets:read) que pueden atender el dominio dado, para el selector de asignación."""
+    usuarios = db.scalars(
+        select(User).where(User.is_active.is_(True)).order_by(User.full_name)
+    ).all()
+    resultado = []
+    for u in usuarios:
+        tiene_tickets = u.is_superuser or any(
+            p.code == 'tickets:read' for role in u.roles for p in role.permissions
+        )
+        if not tiene_tickets:
+            continue
+        doms = get_user_dominios(u)  # None => superusuario (todos)
+        if dominio and doms is not None and dominio not in doms:
+            continue
+        resultado.append({'id': u.id, 'full_name': u.full_name})
+    return resultado
 
 
 @router.get('/{ticket_id}', response_model=TicketOut)

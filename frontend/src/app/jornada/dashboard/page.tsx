@@ -35,6 +35,32 @@ function formatFecha(iso: string) {
   });
 }
 
+function parsearDispositivo(ua: string): string {
+  let browser = '';
+  if (/Edg\//.test(ua))                                   browser = 'Edge';
+  else if (/OPR\/|Opera/.test(ua))                        browser = 'Opera';
+  else if (/Chrome\/([\d]+)/.test(ua)) {
+    const v = ua.match(/Chrome\/([\d]+)/)?.[1] ?? '';
+    browser = `Chrome ${v}`;
+  } else if (/Firefox\/([\d]+)/.test(ua)) {
+    const v = ua.match(/Firefox\/([\d]+)/)?.[1] ?? '';
+    browser = `Firefox ${v}`;
+  } else if (/Safari\//.test(ua))                         browser = 'Safari';
+
+  let os = '';
+  if (/iPhone/.test(ua))                  os = 'iPhone';
+  else if (/iPad/.test(ua))               os = 'iPad';
+  else if (/Android/.test(ua))            os = 'Android';
+  else if (/Windows NT 10\.0/.test(ua))   os = 'Windows 10/11';
+  else if (/Windows NT 6\.1/.test(ua))    os = 'Windows 7';
+  else if (/Windows/.test(ua))            os = 'Windows';
+  else if (/Macintosh|Mac OS X/.test(ua)) os = 'macOS';
+  else if (/Linux/.test(ua))              os = 'Linux';
+
+  if (browser && os) return `${browser} · ${os}`;
+  return browser || os || ua.slice(0, 40);
+}
+
 function formatMinutos(min: number): string {
   const h = Math.floor(min / 60);
   const m = min % 60;
@@ -81,23 +107,6 @@ function SummaryCard({
       <p className="mt-1 text-4xl font-bold tabular-nums text-slate-900 dark:text-slate-50">{value}</p>
       {sub && <p className="mt-1 text-xs text-slate-400">{sub}</p>}
     </div>
-  );
-}
-
-function FotoThumb({ url, label, onClick }: { url: string; label: string; onClick: () => void }) {
-  return (
-    <button type="button" onClick={onClick}
-      className="group relative overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700"
-      title={`Ver foto ${label}`}>
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={url} alt={label} className="h-10 w-10 object-cover transition-opacity group-hover:opacity-75" />
-      <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover:bg-black/20">
-        <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2}
-          className="h-4 w-4 opacity-0 drop-shadow group-hover:opacity-100">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607zM10.5 7.5v6m3-3h-6" />
-        </svg>
-      </div>
-    </button>
   );
 }
 
@@ -216,7 +225,7 @@ function DetalleModal({
                           </div>
                           {r.dispositivo && (
                             <p className="mt-0.5 text-xs text-slate-400 truncate max-w-[240px]">
-                              📱 {r.dispositivo.split(' ').slice(0, 4).join(' ')}
+                              📱 {parsearDispositivo(r.dispositivo)}
                             </p>
                           )}
                         </div>
@@ -245,15 +254,10 @@ function DetalleModal({
 function EmpleadoRow({
   emp,
   onSelect,
-  onFoto,
 }: {
   emp: EmpleadoAsistenciaOut;
   onSelect: () => void;
-  onFoto: (url: string) => void;
 }) {
-  const entradaFoto = storageUrl(emp.entrada?.foto_url ?? null);
-  const salidaFoto  = storageUrl(emp.salida?.foto_url ?? null);
-
   return (
     <tr
       className="cursor-pointer border-b border-slate-100 transition-colors hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/50"
@@ -277,15 +281,9 @@ function EmpleadoRow({
       {/* Entrada */}
       <td className="px-3 py-3">
         {emp.entrada ? (
-          <div className="flex items-center gap-2">
-            {entradaFoto && (
-              <FotoThumb url={entradaFoto} label="entrada"
-                onClick={() => onFoto(entradaFoto!)} />
-            )}
-            <span className="font-mono text-sm text-emerald-700 dark:text-emerald-400">
-              {formatHora(emp.entrada.timestamp)}
-            </span>
-          </div>
+          <span className="font-mono text-sm text-emerald-700 dark:text-emerald-400">
+            {formatHora(emp.entrada.timestamp)}
+          </span>
         ) : (
           <span className="text-sm text-slate-300 dark:text-slate-600">—</span>
         )}
@@ -294,15 +292,9 @@ function EmpleadoRow({
       {/* Salida */}
       <td className="px-3 py-3">
         {emp.salida ? (
-          <div className="flex items-center gap-2">
-            {salidaFoto && (
-              <FotoThumb url={salidaFoto} label="salida"
-                onClick={() => onFoto(salidaFoto!)} />
-            )}
-            <span className="font-mono text-sm text-slate-600 dark:text-slate-400">
-              {formatHora(emp.salida.timestamp)}
-            </span>
-          </div>
+          <span className="font-mono text-sm text-slate-600 dark:text-slate-400">
+            {formatHora(emp.salida.timestamp)}
+          </span>
         ) : (
           <span className="text-sm text-slate-300 dark:text-slate-600">—</span>
         )}
@@ -325,6 +317,8 @@ function EmpleadoRow({
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
+const HOME_OFFICE_KEY = '__home_office__';
+
 export default function JornadaDashboardPage() {
   const router = useRouter();
   const { hasPermission } = useAuth();
@@ -338,7 +332,10 @@ export default function JornadaDashboardPage() {
   const [busqueda, setBusqueda] = useState('');
 
   const [selectedEmp, setSelectedEmp] = useState<EmpleadoAsistenciaOut | null>(null);
-  const [fotoAmpliada, setFotoAmpliada] = useState<string | null>(null);
+
+  const sedesEmpresa = sedes.filter((s) => s.tipo === 'empresa');
+  const nombresHomeOffice = new Set(sedes.filter((s) => s.tipo === 'home_office').map((s) => s.nombre));
+  const hayHomeOffice = nombresHomeOffice.size > 0;
 
   useEffect(() => {
     if (!isAuthenticated()) { router.replace('/login'); return; }
@@ -354,7 +351,9 @@ export default function JornadaDashboardPage() {
   async function cargar() {
     setLoading(true);
     try {
-      const result = await getAsistencia({ fecha, sede: sedeFilter || undefined });
+      // HOME OFFICE agrupa todas las sedes remotas; la API recibe sin filtro de sede
+      const sedeApi = sedeFilter === HOME_OFFICE_KEY ? undefined : (sedeFilter || undefined);
+      const result = await getAsistencia({ fecha, sede: sedeApi });
       setData(result);
     } catch {
       setData(null);
@@ -364,6 +363,10 @@ export default function JornadaDashboardPage() {
   }
 
   const empleadosFiltrados = (data?.empleados ?? []).filter((e) => {
+    // Filtro sede: si es HOME OFFICE, solo empleados cuya sede sea una sede home_office
+    if (sedeFilter === HOME_OFFICE_KEY) {
+      if (!e.sede || !nombresHomeOffice.has(e.sede)) return false;
+    }
     if (filtroEstado !== 'todos' && e.estado !== filtroEstado) return false;
     if (busqueda) {
       const q = busqueda.toLowerCase();
@@ -378,6 +381,15 @@ export default function JornadaDashboardPage() {
   const empleadosOrdenados = [...empleadosFiltrados].sort(
     (a, b) => ordenEstado[a.estado] - ordenEstado[b.estado],
   );
+
+  // Cuando el filtro es HOME OFFICE, la API trae todos → recalcular contadores client-side
+  const baseHomeOffice = sedeFilter === HOME_OFFICE_KEY && data
+    ? (data.empleados ?? []).filter((e) => e.sede && nombresHomeOffice.has(e.sede))
+    : null;
+  const resumenTotal     = baseHomeOffice ? baseHomeOffice.length                                    : data?.total_empleados ?? 0;
+  const resumenPresentes = baseHomeOffice ? baseHomeOffice.filter((e) => e.estado === 'presente').length : data?.presentes ?? 0;
+  const resumenCompletos = baseHomeOffice ? baseHomeOffice.filter((e) => e.estado === 'completo').length : data?.completos ?? 0;
+  const resumenAusentes  = baseHomeOffice ? baseHomeOffice.filter((e) => e.estado === 'ausente').length  : data?.ausentes ?? 0;
 
   const puedeVer = hasPermission('jornada:read');
 
@@ -435,9 +447,12 @@ export default function JornadaDashboardPage() {
                   className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900"
                 >
                   <option value="">Todas las sedes</option>
-                  {sedes.map((s) => (
+                  {sedesEmpresa.map((s) => (
                     <option key={s.id} value={s.nombre}>{s.nombre}</option>
                   ))}
+                  {hayHomeOffice && (
+                    <option value={HOME_OFFICE_KEY}>🏠 Home Office</option>
+                  )}
                 </select>
               </div>
 
@@ -466,16 +481,16 @@ export default function JornadaDashboardPage() {
             {/* Tarjetas resumen */}
             {data && (
               <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-                <SummaryCard label="Esperados" value={data.total_empleados}
-                  sub={sedeFilter ? `Sede ${sedeFilter}` : 'Todos'}
+                <SummaryCard label="Esperados" value={resumenTotal}
+                  sub={sedeFilter === HOME_OFFICE_KEY ? 'Home Office' : sedeFilter ? `Sede ${sedeFilter}` : 'Todos'}
                   color="border-slate-200 dark:border-slate-800" />
-                <SummaryCard label="En sede" value={data.presentes}
+                <SummaryCard label="En sede" value={resumenPresentes}
                   sub="Entrada sin salida"
                   color="border-emerald-200 dark:border-emerald-800" />
-                <SummaryCard label="Completaron" value={data.completos}
+                <SummaryCard label="Completaron" value={resumenCompletos}
                   sub="Jornada cerrada"
                   color="border-blue-200 dark:border-blue-800" />
-                <SummaryCard label="Ausentes" value={data.ausentes}
+                <SummaryCard label="Ausentes" value={resumenAusentes}
                   sub="Sin registros"
                   color="border-red-200 dark:border-red-800" />
               </div>
@@ -495,7 +510,7 @@ export default function JornadaDashboardPage() {
                     {labels[e]}
                     {data && e !== 'todos' && (
                       <span className="ml-1.5 opacity-60">
-                        {e === 'presente' ? data.presentes : e === 'completo' ? data.completos : data.ausentes}
+                        {e === 'presente' ? resumenPresentes : e === 'completo' ? resumenCompletos : resumenAusentes}
                       </span>
                     )}
                   </button>
@@ -556,7 +571,6 @@ export default function JornadaDashboardPage() {
                           key={emp.empleado_id}
                           emp={emp}
                           onSelect={() => setSelectedEmp(emp)}
-                          onFoto={setFotoAmpliada}
                         />
                       ))}
                     </tbody>
@@ -564,15 +578,6 @@ export default function JornadaDashboardPage() {
                 </div>
               </div>
             )}
-          </div>
-        )}
-
-        {/* Modal foto ampliada (tabla) */}
-        {fotoAmpliada && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
-            onClick={() => setFotoAmpliada(null)}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={fotoAmpliada} alt="Evidencia" className="max-h-[90vh] max-w-full rounded-2xl object-contain" />
           </div>
         )}
 

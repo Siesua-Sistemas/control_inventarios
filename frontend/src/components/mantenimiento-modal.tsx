@@ -91,6 +91,36 @@ export function MantenimientoModal({ mantenimiento: initial, onClose, onUpdate }
     } catch { /* silently fail */ }
   }
 
+  // Edición local del valor (número/texto/selección) sin pegarle al server en cada tecla
+  function setValorLocal(pasoId: number, valor: string) {
+    setM((prev) => ({
+      ...prev,
+      pasos: prev.pasos.map((p) => (p.id === pasoId ? { ...p, valor } : p)),
+    }));
+  }
+
+  async function saveValor(pasoId: number, valor: string) {
+    const completado = valor.trim() !== '';
+    setM((prev) => ({
+      ...prev,
+      pasos: prev.pasos.map((p) =>
+        p.id === pasoId ? { ...p, valor, completado, completado_en: completado ? new Date().toISOString() : null } : p
+      ),
+    }));
+    try { await updatePaso(m.id, pasoId, { valor }); } catch { /* silently fail */ }
+  }
+
+  const fmtNum = (s: string | null): string | null => (s == null || s === '' ? null : String(Number(s)));
+
+  function fueraDeRango(p: MantenimientoRow['pasos'][number]): boolean {
+    if (p.tipo_campo !== 'numero' || !p.valor) return false;
+    const n = Number(p.valor);
+    if (Number.isNaN(n)) return false;
+    if (p.valor_min != null && n < Number(p.valor_min)) return true;
+    if (p.valor_max != null && n > Number(p.valor_max)) return true;
+    return false;
+  }
+
   // ── Estado transitions ────────────────────────────────────────────────────
 
   async function handleIniciar() {
@@ -123,6 +153,8 @@ export function MantenimientoModal({ mantenimiento: initial, onClose, onUpdate }
 
   const totalPasos = m.pasos?.length ?? 0;
   const donePasos = m.pasos?.filter((p) => p.completado).length ?? 0;
+  const obligatoriosPendientes = (m.pasos ?? []).filter((p) => (p.obligatorio ?? true) && !p.completado);
+  const puedeCompletar = obligatoriosPendientes.length === 0;
   const canUpdate = hasPermission('mantenimientos:update') || hasPermission('mantenimientos:write');
   const canApprove = hasPermission('mantenimientos:approve');
 
@@ -300,21 +332,91 @@ export function MantenimientoModal({ mantenimiento: initial, onClose, onUpdate }
               </div>
             </div>
             <div className="space-y-1.5 rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-800/40">
-              {m.pasos.map((paso) => (
-                <button
-                  key={paso.id}
-                  onClick={() => canUpdate && togglePaso(paso.id, paso.completado)}
-                  disabled={!canUpdate}
-                  className={`flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors ${canUpdate ? 'hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer' : 'cursor-default'}`}
-                >
-                  <span className={`flex-none text-base ${paso.completado ? 'text-emerald-500' : 'text-slate-300 dark:text-slate-600'}`}>
-                    {paso.completado ? '✓' : '○'}
-                  </span>
-                  <span className={`text-sm ${paso.completado ? 'line-through text-slate-400 dark:text-slate-600' : 'text-slate-700 dark:text-slate-300'}`}>
-                    {paso.descripcion}
-                  </span>
-                </button>
-              ))}
+              {m.pasos.map((paso) => {
+                const tipo = paso.tipo_campo ?? 'checkbox';
+                const opcional = paso.obligatorio === false;
+
+                if (tipo === 'checkbox') {
+                  return (
+                    <button
+                      key={paso.id}
+                      onClick={() => canUpdate && togglePaso(paso.id, paso.completado)}
+                      disabled={!canUpdate}
+                      className={`flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors ${canUpdate ? 'hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer' : 'cursor-default'}`}
+                    >
+                      <span className={`flex-none text-base ${paso.completado ? 'text-emerald-500' : 'text-slate-300 dark:text-slate-600'}`}>
+                        {paso.completado ? '✓' : '○'}
+                      </span>
+                      <span className={`text-sm ${paso.completado ? 'line-through text-slate-400 dark:text-slate-600' : 'text-slate-700 dark:text-slate-300'}`}>
+                        {paso.descripcion}
+                        {opcional && <span className="ml-1 text-xs text-slate-400">(opcional)</span>}
+                      </span>
+                    </button>
+                  );
+                }
+
+                const outOfRange = fueraDeRango(paso);
+                return (
+                  <div key={paso.id} className="rounded-lg px-2 py-1.5">
+                    <label className="mb-1 flex items-center gap-1.5 text-sm text-slate-700 dark:text-slate-300">
+                      <span className={`flex-none text-base ${paso.completado ? 'text-emerald-500' : 'text-slate-300 dark:text-slate-600'}`}>
+                        {paso.completado ? '✓' : '○'}
+                      </span>
+                      {paso.descripcion}
+                      {opcional && <span className="text-xs text-slate-400">(opcional)</span>}
+                    </label>
+                    <div className="ml-6">
+                      {tipo === 'numero' && (
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            step="any"
+                            disabled={!canUpdate}
+                            value={paso.valor ?? ''}
+                            onChange={(e) => setValorLocal(paso.id, e.target.value)}
+                            onBlur={(e) => canUpdate && saveValor(paso.id, e.target.value)}
+                            placeholder={paso.valor_min != null || paso.valor_max != null ? `${fmtNum(paso.valor_min) ?? ''}–${fmtNum(paso.valor_max) ?? ''}` : 'Valor'}
+                            className={`w-32 rounded-lg border bg-white px-3 py-1.5 text-sm text-slate-900 focus:outline-none disabled:opacity-60 dark:bg-slate-900 dark:text-white ${outOfRange ? 'border-red-500 focus:border-red-500' : 'border-slate-300 focus:border-cyan-500 dark:border-slate-700'}`}
+                          />
+                          {paso.unidad && <span className="text-sm text-slate-500">{paso.unidad}</span>}
+                          {(paso.valor_min != null || paso.valor_max != null) && (
+                            <span className="text-xs text-slate-400">
+                              rango {fmtNum(paso.valor_min) ?? '−∞'}–{fmtNum(paso.valor_max) ?? '∞'}
+                            </span>
+                          )}
+                          {outOfRange && (
+                            <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700 dark:bg-red-500/20 dark:text-red-300">
+                              ⚠ fuera de rango
+                            </span>
+                          )}
+                        </div>
+                      )}
+                      {tipo === 'texto' && (
+                        <input
+                          type="text"
+                          disabled={!canUpdate}
+                          value={paso.valor ?? ''}
+                          onChange={(e) => setValorLocal(paso.id, e.target.value)}
+                          onBlur={(e) => canUpdate && saveValor(paso.id, e.target.value)}
+                          placeholder="Escribe el resultado..."
+                          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 focus:border-cyan-500 focus:outline-none disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                        />
+                      )}
+                      {tipo === 'seleccion' && (
+                        <select
+                          disabled={!canUpdate}
+                          value={paso.valor ?? ''}
+                          onChange={(e) => canUpdate && saveValor(paso.id, e.target.value)}
+                          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 focus:border-cyan-500 focus:outline-none disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                        >
+                          <option value="">— Seleccionar —</option>
+                          {(paso.opciones ?? []).map((o) => <option key={o} value={o}>{o}</option>)}
+                        </select>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
@@ -342,11 +444,16 @@ export function MantenimientoModal({ mantenimiento: initial, onClose, onUpdate }
           <div className="mx-6 mb-4">
             <button
               onClick={() => { setFirmaData(null); setFirmaMode('tecnico'); }}
-              disabled={actionLoading}
-              className="w-full rounded-xl bg-cyan-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-cyan-700 disabled:opacity-50 transition-colors"
+              disabled={actionLoading || !puedeCompletar}
+              className="w-full rounded-xl bg-cyan-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-cyan-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               ✏️ Firmar y completar
             </button>
+            {!puedeCompletar && (
+              <p className="mt-2 text-center text-xs text-amber-600 dark:text-amber-400">
+                Faltan {obligatoriosPendientes.length} paso(s) obligatorio(s) por registrar antes de firmar.
+              </p>
+            )}
           </div>
         )}
 

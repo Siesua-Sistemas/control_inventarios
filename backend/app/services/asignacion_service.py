@@ -64,24 +64,32 @@ class AsignacionService:
                 status_code=status.HTTP_409_CONFLICT,
                 detail=f'El equipo tiene estado "{equipo.estado}" y no puede entregarse',
             )
-        empleado = self.emp_repo.get_by_id(payload.empleado_id)
-        if not empleado:
-            raise HTTPException(status_code=404, detail='Empleado no encontrado')
+        empleado = None
+        if payload.empleado_id is not None:
+            empleado = self.emp_repo.get_by_id(payload.empleado_id)
+            if not empleado:
+                raise HTTPException(status_code=404, detail='Empleado no encontrado')
+
+        obs = payload.observaciones or ''
+        if payload.responsable_nombre and not empleado:
+            obs = f'Responsable: {payload.responsable_nombre}' + (f' | {obs}' if obs else '')
 
         estado_antes = equipo.estado
         asignacion = Asignacion(
             equipment_id=equipo.id,
             tipo=TIPO_ENTREGA,
-            empleado_id=empleado.id,
+            empleado_id=empleado.id if empleado else None,
             bodega_origen_id=payload.bodega_origen_id or equipo.bodega_id,
             estado_antes=estado_antes,
             estado_despues='Asignado',
-            observaciones=payload.observaciones,
+            observaciones=obs or None,
             created_by_id=created_by_id,
         )
         equipo.estado = 'Asignado'
-        equipo.empleado_id = empleado.id
+        equipo.empleado_id = empleado.id if empleado else None
         equipo.bodega_id = None
+        if payload.sede_destino:
+            equipo.sede = payload.sede_destino
         self.eq_repo.update(equipo)
 
         # Cascade to children (peripherals)
@@ -90,7 +98,7 @@ class AsignacionService:
                 child_asig = Asignacion(
                     equipment_id=child.id,
                     tipo=TIPO_ENTREGA,
-                    empleado_id=empleado.id,
+                    empleado_id=empleado.id if empleado else None,
                     bodega_origen_id=child.bodega_id,
                     estado_antes=child.estado,
                     estado_despues='Asignado',
@@ -98,8 +106,10 @@ class AsignacionService:
                     created_by_id=created_by_id,
                 )
                 child.estado = 'Asignado'
-                child.empleado_id = empleado.id
+                child.empleado_id = empleado.id if empleado else None
                 child.bodega_id = None
+                if payload.sede_destino:
+                    child.sede = payload.sede_destino
                 self.eq_repo.update(child)
                 self.repo.create(child_asig)
 
@@ -190,8 +200,11 @@ class AsignacionService:
         hasta: date | None,
         skip: int = 0,
         limit: int | None = 50,
+        dominios_permitidos: list[str] | None = None,
     ) -> tuple[list[AsignacionOut], int]:
-        items, count = self.repo.list_historial(equipment_id, empleado_id, tipo, desde, hasta, skip, limit)
+        items, count = self.repo.list_historial(
+            equipment_id, empleado_id, tipo, desde, hasta, skip, limit, dominios_permitidos
+        )
         return [_to_out(a) for a in items], count
 
     def entregar_multiple(self, payload: EntregarMultipleRequest, created_by_id: int) -> list[AsignacionOut]:
@@ -203,10 +216,12 @@ class AsignacionService:
                 equipment_id=eq_id,
                 empleado_id=payload.empleado_id,
                 bodega_origen_id=payload.bodega_origen_id,
+                sede_destino=payload.sede_destino,
+                responsable_nombre=payload.responsable_nombre,
                 observaciones=payload.observaciones,
             )
             results.append(self.entregar(single, created_by_id))
         return results
 
-    def get_activas(self) -> list[AsignacionOut]:
-        return [_to_out(a) for a in self.repo.get_activas()]
+    def get_activas(self, dominios_permitidos: list[str] | None = None) -> list[AsignacionOut]:
+        return [_to_out(a) for a in self.repo.get_activas(dominios_permitidos)]

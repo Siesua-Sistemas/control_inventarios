@@ -60,12 +60,15 @@ class MantenimientoRepository:
         estado: str | None = None,
         skip: int = 0,
         limit: int = 50,
+        dominios_permitidos: list[str] | None = None,
     ) -> tuple[list[Mantenimiento], int]:
         query = (
             select(Mantenimiento)
             .join(Equipment, Mantenimiento.equipment_id == Equipment.id)
             .where(Mantenimiento.is_active.is_(True))
         )
+        if dominios_permitidos is not None:
+            query = query.where(Equipment.dominio.in_(dominios_permitidos))
         if sede:
             query = query.where(Equipment.sede.ilike(f'%{sede}%'))
         if tipo:

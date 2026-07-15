@@ -26,8 +26,16 @@ const TIPOS_CAMPO: { value: SpecField['type']; label: string }[] = [
   { value: 'scale', label: 'Escala' },
 ];
 
+const DOMINIOS = ['IT', 'Bioingeniería', 'General'];
+const DOMINIO_COLORS: Record<string, string> = {
+  IT: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-500/20 dark:text-cyan-300',
+  'Bioingeniería': 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300',
+  General: 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300',
+};
+
 interface TipoEditState {
   nombre: string;
+  dominio: string;
   es_periferico: boolean;
   activo: boolean;
 }
@@ -53,7 +61,7 @@ const EMPTY_SPEC: SpecFieldEdit = {
 };
 
 function tipoToEdit(t: EquipmentTipo): TipoEditState {
-  return { nombre: t.nombre, es_periferico: t.es_periferico, activo: t.activo };
+  return { nombre: t.nombre, dominio: t.dominio ?? 'IT', es_periferico: t.es_periferico, activo: t.activo };
 }
 
 function specsToEdit(specs: SpecField[]): SpecFieldEdit[] {
@@ -103,6 +111,7 @@ export default function TiposEquipoPage() {
 
   const [showNewForm, setShowNewForm] = useState(false);
   const [newNombre, setNewNombre] = useState('');
+  const [newDominio, setNewDominio] = useState('IT');
   const [creating, setCreating] = useState(false);
 
   // Drag state — tipo rows
@@ -165,6 +174,7 @@ export default function TiposEquipoPage() {
     try {
       const updated = await updateEquipmentTipo(id, {
         nombre: edit.nombre.trim(),
+        dominio: edit.dominio,
         es_periferico: edit.es_periferico,
         activo: edit.activo,
         orden: orden >= 0 ? orden : 0,
@@ -196,6 +206,7 @@ export default function TiposEquipoPage() {
     try {
       const updatedTipo = await updateEquipmentTipo(id, {
         nombre: edit.nombre.trim(),
+        dominio: edit.dominio,
         es_periferico: edit.es_periferico,
         activo: edit.activo,
         orden: orden >= 0 ? orden : 0,
@@ -230,6 +241,7 @@ export default function TiposEquipoPage() {
     try {
       const created = await createEquipmentTipo({
         nombre: newNombre.trim(),
+        dominio: newDominio,
         es_periferico: false,
         activo: true,
         orden: tipos.length,
@@ -238,6 +250,7 @@ export default function TiposEquipoPage() {
       setEdits((prev) => ({ ...prev, [created.id]: tipoToEdit(created) }));
       setSpecsEdits((prev) => ({ ...prev, [created.id]: [] }));
       setNewNombre('');
+      setNewDominio('IT');
       setShowNewForm(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al crear el tipo');
@@ -404,6 +417,16 @@ export default function TiposEquipoPage() {
                 required
               />
             </div>
+            <div className="space-y-1">
+              <label className="block text-xs text-slate-600 dark:text-slate-400">Dominio</label>
+              <select
+                value={newDominio}
+                onChange={(e) => setNewDominio(e.target.value)}
+                className="rounded-md border border-slate-300 bg-white px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-800"
+              >
+                {DOMINIOS.map((d) => <option key={d} value={d}>{d}</option>)}
+              </select>
+            </div>
             <div className="flex gap-2">
               <button
                 type="submit"
@@ -432,6 +455,7 @@ export default function TiposEquipoPage() {
                 <tr>
                   <th className="w-8 px-3 py-3" />
                   <th className="px-4 py-3">Nombre</th>
+                  <th className="px-4 py-3">Dominio</th>
                   <th className="px-4 py-3">Activo</th>
                   <th className="px-4 py-3">Acciones</th>
                 </tr>
@@ -483,6 +507,22 @@ export default function TiposEquipoPage() {
                           />
                         </td>
                         <td className="px-4 py-3">
+                          <select
+                            value={edit.dominio}
+                            onChange={(e) =>
+                              setEdits((prev) => ({
+                                ...prev,
+                                [tipo.id]: { ...prev[tipo.id], dominio: e.target.value },
+                              }))
+                            }
+                            className="rounded-md border border-slate-300 bg-white px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-800"
+                          >
+                            {DOMINIOS.map((d) => (
+                              <option key={d} value={d}>{d}</option>
+                            ))}
+                          </select>
+                        </td>
+                        <td className="px-4 py-3">
                           <input
                             type="checkbox"
                             checked={edit.activo}
@@ -525,7 +565,7 @@ export default function TiposEquipoPage() {
                       {expanded && (
                         <tr>
                           <td
-                            colSpan={4}
+                            colSpan={5}
                             className="bg-slate-50/50 px-4 py-4 dark:bg-slate-950/30"
                           >
                             <div className="space-y-5 rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">

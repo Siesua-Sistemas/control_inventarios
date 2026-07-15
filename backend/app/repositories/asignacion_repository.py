@@ -23,8 +23,11 @@ class AsignacionRepository:
         hasta: date | None = None,
         skip: int = 0,
         limit: int | None = 50,
+        dominios_permitidos: list[str] | None = None,
     ) -> tuple[list[Asignacion], int]:
         query = select(Asignacion).join(Equipment, Asignacion.equipment_id == Equipment.id)
+        if dominios_permitidos is not None:
+            query = query.where(Equipment.dominio.in_(dominios_permitidos))
         if equipment_id:
             query = query.where(Asignacion.equipment_id == equipment_id)
         if empleado_id:
@@ -42,7 +45,7 @@ class AsignacionRepository:
         items = list(self.db.scalars(query).all())
         return items, count
 
-    def get_activas(self) -> list[Asignacion]:
+    def get_activas(self, dominios_permitidos: list[str] | None = None) -> list[Asignacion]:
         # Latest Entrega per equipment where the equipment is still Asignado/Prestado
         subq = (
             select(func.max(Asignacion.id))
@@ -55,6 +58,8 @@ class AsignacionRepository:
             Equipment.estado.in_(['Asignado', 'Prestado']),
             Equipment.is_active.is_(True),
         ]
+        if dominios_permitidos is not None:
+            filters.append(Equipment.dominio.in_(dominios_permitidos))
         return list(
             self.db.scalars(
                 select(Asignacion)

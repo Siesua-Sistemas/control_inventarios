@@ -89,6 +89,9 @@ El enfoque original de un único sistema multi-dominio fue descartado. La soluci
 | Flujo de estados: Programado → En proceso → Pendiente aprobación → Aprobado / Rechazado | ✅ |
 | Botón "Iniciar OT" (programado → en_proceso) | ✅ |
 | Checklist interactivo de pasos (clickeable con barra de progreso) | ✅ |
+| Checklist con captura de datos (número/texto/selección, no solo Sí/No) | ✅ |
+| Medición numérica con unidad + rango mín/máx (resalta fuera de rango) | ✅ |
+| Pasos obligatorios: bloquean la firma del técnico si quedan vacíos | ✅ |
 | Checklists auto-creados desde plantillas por tipo de equipo | ✅ |
 | Firma digital del técnico (cierra OT → pendiente_aprobacion) | ✅ |
 | Firma digital del supervisor (aprobación final) | ✅ |
@@ -175,9 +178,9 @@ El enfoque original de un único sistema multi-dominio fue descartado. La soluci
 | `empleados` | cedula, nombres, apellidos, sede, cargo | ✅ |
 | `asignaciones` | equipment_id, empleado_id, tipo, fecha | ✅ |
 | `actas_entrega` | tipo, firma_entrega, firma_recibe, empleado, sede | ✅ |
-| `mantenimientos` | numero_ot, equipment_id, tipo, tecnico (texto), **tecnico_id** (FK), prioridad, estado, firma_tecnico, firma_supervisor, aprobado_por_id | ✅ |
-| `mantenimiento_pasos` | mantenimiento_id, descripcion, completado, completado_en | ✅ |
-| `mantenimiento_plantilla_pasos` | tipo_equipo, tipo_mantenimiento, descripcion, orden | ✅ |
+| `mantenimientos` | numero_ot, equipment_id, tipo, tecnico (texto), **tecnico_id** (FK), prioridad, estado, iniciado_en, finalizado_en, firma_tecnico, firma_supervisor, aprobado_por_id | ✅ |
+| `mantenimiento_pasos` | mantenimiento_id, descripcion, completado, completado_en, **tipo_campo** (checkbox/numero/texto/seleccion), unidad, opciones, valor_min, valor_max, obligatorio, valor | ✅ |
+| `mantenimiento_plantilla_pasos` | tipo_equipo, tipo_mantenimiento, descripcion, orden, **tipo_campo**, unidad, opciones, valor_min, valor_max, obligatorio | ✅ |
 | `mantenimiento_configs` | tipo_equipo, frecuencia_meses | ✅ |
 | `users` | email, full_name, is_active, is_superuser | ✅ |
 | `roles` | name, home_dashboard | ✅ |
@@ -256,10 +259,12 @@ PROGRAMADO ──[Iniciar OT]──▶ EN_PROCESO ──[Firmar técnico]──�
                                           APROBADO               RECHAZADO
 ```
 
-- **Programado → En proceso**: endpoint `POST /{id}/iniciar` — requiere `mantenimientos:update`
-- **En proceso → Pendiente aprobación**: endpoint `POST /{id}/firma-tecnico` — automático al firmar
+- **Programado → En proceso**: endpoint `POST /{id}/iniciar` — requiere `mantenimientos:update`. Registra `iniciado_en`.
+- **En proceso → Pendiente aprobación**: endpoint `POST /{id}/firma-tecnico` — automático al firmar. Registra `finalizado_en`. La firma se **bloquea** si quedan pasos obligatorios sin valor.
 - **Pendiente → Aprobado/Rechazado**: endpoint `POST /{id}/aprobar` — requiere `mantenimientos:approve`
 - También existe `CANCELADO` y `REALIZADO` (estados legacy / directos)
+- **OT `APROBADO` = registro inalterable**: se rechaza con 400 cualquier edición (PUT/PATCH, pasos, fotos). `RECHAZADO` sí admite corrección.
+- `iniciado_en` / `finalizado_en` se capturan automáticamente (base para KPI de mano de obra a futuro; aún sin cálculo ni UI).
 
 ---
 
@@ -291,21 +296,11 @@ PROGRAMADO ──[Iniciar OT]──▶ EN_PROCESO ──[Firmar técnico]──�
 - **Limpieza multi-dominio → App IT pura** (2026-06-25)
 - **OT completa**: número, prioridad, estados, checklist interactivo, firma técnico/supervisor, agenda unificada (2026-06-25)
 
-### Fase 2 — Pendiente 🔶
 
-**App Bioingeniería** (clonar de IT):
-1. Clonar repositorio en directorio nuevo
-2. Cambiar puertos (backend 8002, frontend 3002) y nombre de BD (`inv_bio`)
-3. Adaptar colores de acento (cyan → violeta)
-4. Sembrar tipos de equipo biomédico
-5. Ajustar branding ("Bioingeniería" en lugar de "IT")
 
-### Fase 3 — Pendiente 🔶
 
-**Portal Admin** (launcher):
-- App Next.js liviana en puerto 3000
-- Pantalla de acceso con dos tarjetas: [Entrar a IT] · [Entrar a Bioingeniería]
-- Sin backend propio; solo redirige a las apps correspondientes
+
+
 
 ### Fase 4 — Diferida ⏳
 
@@ -359,18 +354,15 @@ PROGRAMADO ──[Iniciar OT]──▶ EN_PROCESO ──[Firmar técnico]──�
 - **`AgendaContent`**: componente unificado OTs + Tickets — usado en dashboard técnico (`home_dashboard='tecnico'`) y en `/mantenimientos/mi-dia` (renombrado "Mi agenda").
 - **Formulario de OT**: selector de usuario interno + campo texto para externos.
 
+### 2026-07-08 — Checklist con datos, menús unificados y fixes de confiabilidad
+- **Checklist con captura de datos**: `mantenimiento_pasos` y `mantenimiento_plantilla_pasos` ganan `tipo_campo` (checkbox/numero/texto/seleccion), `unidad`, `opciones`, `valor_min`, `valor_max`, `obligatorio`; el paso instanciado guarda `valor`. Medición numérica valida rango y resalta fuera de rango. La firma del técnico se bloquea si quedan obligatorios sin valor.
+- **Configuración de plantillas**: el formulario permite elegir tipo de dato, unidad, rango, opciones y si es obligatorio.
+- **Menús unificados**: `MantenimientosSubNav` es ahora fuente única (consciente de permisos), presente en **todas** las páginas del módulo y en el mismo orden que el navbar. Etiquetas: Panel · Mi agenda · Órdenes de trabajo · Calendario · Calibraciones · Configuración ("Registros" → "Órdenes de trabajo", "Dashboard" → "Panel").
+- **Fix `numero_ot`**: se genera desde el máximo sufijo del día sobre TODAS las filas (evita colisión/500 tras soft-delete), no desde el conteo de activos.
+- **Inmutabilidad**: una OT `aprobado` rechaza (400) toda edición — PUT/PATCH, pasos y fotos.
+- **Tiempo de mano de obra (preparado)**: `iniciado_en` / `finalizado_en` en `mantenimientos`, capturados automáticamente en iniciar/firmar. Sin cálculo ni UI aún.
+
 ---
 
 ## 11. Pendientes inmediatos
 
-### A — App Bioingeniería
-Clonar proyecto IT, cambiar puertos/DB/colores/tipos. Ver Fase 2.
-
-### B — Portal Admin
-Launcher liviano que unifica acceso a App IT y App Bio. Ver Fase 3.
-
-### C — Documentos adjuntos en ficha del equipo
-Tabla `equipment_documentos`, visor PDF, manuales/certificados.
-
-### D — Certificados de calibración
-Tabla `calibracion_certificados`, adjuntar PDF, descarga.

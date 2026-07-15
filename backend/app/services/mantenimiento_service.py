@@ -18,6 +18,24 @@ from app.schemas.mantenimiento import (
 from app.utils.dates import add_months
 
 
+def _paso_to_out(paso: MantenimientoPaso) -> PasoOut:
+    return PasoOut(
+        id=paso.id,
+        mantenimiento_id=paso.mantenimiento_id,
+        orden=paso.orden,
+        descripcion=paso.descripcion,
+        completado=paso.completado,
+        completado_en=paso.completado_en,
+        tipo_campo=paso.tipo_campo or 'checkbox',
+        unidad=paso.unidad,
+        opciones=paso.opciones,
+        valor_min=paso.valor_min,
+        valor_max=paso.valor_max,
+        obligatorio=paso.obligatorio if paso.obligatorio is not None else True,
+        valor=paso.valor,
+    )
+
+
 def _to_out(m: Mantenimiento) -> MantenimientoOut:
     eq = m.equipment
     tecnico_nombre = None
@@ -45,6 +63,8 @@ def _to_out(m: Mantenimiento) -> MantenimientoOut:
         proximo_mantenimiento=m.proximo_mantenimiento,
         estado=m.estado,
         prioridad=m.prioridad,
+        iniciado_en=m.iniciado_en,
+        finalizado_en=m.finalizado_en,
         firma_tecnico=m.firma_tecnico,
         firma_supervisor=m.firma_supervisor,
         aprobado_por_nombre=m.aprobado_por.full_name if m.aprobado_por else None,
@@ -62,17 +82,7 @@ def _to_out(m: Mantenimiento) -> MantenimientoOut:
             )
             for p in (m.photos or [])
         ],
-        pasos=[
-            PasoOut(
-                id=paso.id,
-                mantenimiento_id=paso.mantenimiento_id,
-                orden=paso.orden,
-                descripcion=paso.descripcion,
-                completado=paso.completado,
-                completado_en=paso.completado_en,
-            )
-            for paso in (m.pasos or [])
-        ],
+        pasos=[_paso_to_out(paso) for paso in (m.pasos or [])],
     )
 
 
@@ -103,8 +113,9 @@ class MantenimientoService:
         estado: str | None = None,
         skip: int = 0,
         limit: int = 50,
+        dominios_permitidos: list[str] | None = None,
     ) -> tuple[int, list[MantenimientoOut]]:
-        items, total = self.repo.list_global(sede, tipo, tipo_equipo, estado_vencimiento, proximo_desde, proximo_hasta, estado, skip, limit)
+        items, total = self.repo.list_global(sede, tipo, tipo_equipo, estado_vencimiento, proximo_desde, proximo_hasta, estado, skip, limit, dominios_permitidos=dominios_permitidos)
         return total, [_to_out(m) for m in items]
 
     def create(self, payload: MantenimientoCreate, created_by_id: int) -> MantenimientoOut:
@@ -133,12 +144,20 @@ class MantenimientoService:
         )
         result = self.repo.create(m)
 
-        # Generate numero_ot after we have the ID
+        # Generate numero_ot after we have the ID.
+        # Secuencia diaria basada en el máximo sufijo existente (TODAS las filas, incluidas
+        # las soft-deleted: conservan su numero_ot y el índice unique sigue aplicando).
+        # Evita colisiones al borrar, que un conteo de activos sí produciría.
         from sqlalchemy import func, select as sa_select
-        count = self.repo.db.scalar(
-            sa_select(func.count()).where(Mantenimiento.is_active.is_(True))
-        ) or 1
-        result.numero_ot = f"OT-{datetime.now().strftime('%Y%m%d')}-{count:04d}"
+        prefix = f"OT-{datetime.now().strftime('%Y%m%d')}-"
+        ultimo = self.repo.db.scalar(
+            sa_select(func.max(Mantenimiento.numero_ot)).where(Mantenimiento.numero_ot.like(f'{prefix}%'))
+        )
+        try:
+            seq = int(ultimo.rsplit('-', 1)[-1]) + 1 if ultimo else 1
+        except (ValueError, AttributeError):
+            seq = 1
+        result.numero_ot = f'{prefix}{seq:04d}'
         self.repo.db.add(result)
         self.repo.db.commit()
         self.repo.db.refresh(result)
@@ -164,6 +183,12 @@ class MantenimientoService:
                     orden=p.orden,
                     descripcion=p.descripcion,
                     completado=False,
+                    tipo_campo=p.tipo_campo or 'checkbox',
+                    unidad=p.unidad,
+                    opciones=p.opciones,
+                    valor_min=p.valor_min,
+                    valor_max=p.valor_max,
+                    obligatorio=p.obligatorio if p.obligatorio is not None else True,
                 ))
             db.commit()
             db.refresh(result)
@@ -178,6 +203,11 @@ class MantenimientoService:
         m = self.repo.get_by_id(mantenimiento_id)
         if not m:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Mantenimiento no encontrado')
+        if m.estado == 'aprobado':
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail='La OT está aprobada y es un registro inalterable; no admite cambios.',
+            )
         for field, value in payload.model_dump(exclude_none=True).items():
             setattr(m, field, value)
         return _to_out(self.repo.update(m))

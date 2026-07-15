@@ -3,7 +3,7 @@ from datetime import datetime
 from pydantic import BaseModel, EmailStr, field_validator
 
 DASHBOARDS_VALIDOS = {'general', 'inventario', 'entregas', 'tecnico'}
-DOMINIOS_VALIDOS = {'IT', 'BIOINGENIERIA'}
+DOMINIOS_VALIDOS = {'IT', 'Bioingeniería', 'General'}
 
 
 class PermissionOut(BaseModel):

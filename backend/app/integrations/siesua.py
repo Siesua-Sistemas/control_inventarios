@@ -30,6 +30,10 @@ MYSQL_CONFIG = {
 _BOGOTA_LAT = 4.7110
 _BOGOTA_LON = -74.0721
 
+# Sedes que deben ignorarse durante la sincronización (nombres exactos, sin importar mayúsculas).
+_SEDES_EXCLUIDAS: set[str] = {'DR. JULIAN SILVA', 'TELEORIENTACION'}
+
+
 # Consulta de sedes activas
 _SQL_SEDES = "SELECT Id, Nombre FROM sedes WHERE Estado = 1"
 
@@ -105,6 +109,8 @@ def _sync_sedes(db: Session, rows: list[dict], result: SyncResult) -> dict[int, 
         nombre = (row['Nombre'] or '').strip()
         if not nombre:
             continue
+        if nombre.upper() in {n.upper() for n in _SEDES_EXCLUIDAS}:
+            continue  # sede excluida manualmente
 
         try:
             if ext_id in existing_mappings:

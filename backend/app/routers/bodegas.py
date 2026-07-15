@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.dependencies import require_permissions
+from app.dependencies import get_user_dominios, require_permissions
 from app.repositories.bodega_repository import BodegaRepository
 from app.schemas.bodega import BodegaCreate, BodegaListResponse, BodegaOut, BodegaUpdate
 from app.schemas.equipment import EquipmentOut
@@ -19,9 +19,9 @@ def _service(db: Session = Depends(get_db)) -> BodegaService:
 def list_bodegas(
     sede: str | None = Query(None),
     service: BodegaService = Depends(_service),
-    _user=Depends(require_permissions('bodegas:read')),
+    user=Depends(require_permissions('bodegas:read')),
 ):
-    items = service.list_bodegas(sede)
+    items = service.list_bodegas(sede, dominios_permitidos=get_user_dominios(user))
     return {'total': len(items), 'items': items}
 
 
@@ -33,7 +33,7 @@ def create_bodega(
 ):
     b = service.create_bodega(payload)
     return BodegaOut(
-        **{k: getattr(b, k) for k in ('id', 'nombre', 'sede', 'responsable', 'descripcion', 'is_active', 'created_at')},
+        **{k: getattr(b, k) for k in ('id', 'nombre', 'sede', 'responsable', 'descripcion', 'dominio', 'is_active', 'created_at')},
         total_equipos=0,
     )
 
@@ -42,9 +42,9 @@ def create_bodega(
 def get_inventario(
     bodega_id: int,
     service: BodegaService = Depends(_service),
-    _user=Depends(require_permissions('bodegas:read')),
+    user=Depends(require_permissions('bodegas:read')),
 ):
-    inv = service.get_inventario(bodega_id)
+    inv = service.get_inventario(bodega_id, dominios_permitidos=get_user_dominios(user))
     inv['equipos'] = [EquipmentOut.model_validate(e) for e in inv['equipos']]
     return inv
 
@@ -54,13 +54,13 @@ def update_bodega(
     bodega_id: int,
     payload: BodegaUpdate,
     service: BodegaService = Depends(_service),
-    _user=Depends(require_permissions('bodegas:delete')),
+    user=Depends(require_permissions('bodegas:write')),
 ):
     b = service.update_bodega(bodega_id, payload)
     from app.repositories.bodega_repository import BodegaRepository as BR
-    count = BR(service.repository.db).count_equipos(b.id)
+    count = BR(service.repository.db).count_equipos(b.id, get_user_dominios(user))
     return BodegaOut(
-        **{k: getattr(b, k) for k in ('id', 'nombre', 'sede', 'responsable', 'descripcion', 'is_active', 'created_at')},
+        **{k: getattr(b, k) for k in ('id', 'nombre', 'sede', 'responsable', 'descripcion', 'dominio', 'is_active', 'created_at')},
         total_equipos=count,
     )
 

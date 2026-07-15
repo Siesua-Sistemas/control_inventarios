@@ -248,6 +248,7 @@ function PerifeicosTab({
 
   const parentBase = {
     sede: profile.equipment.sede,
+    dominio: profile.equipment.dominio,
     bodega_id: profile.equipment.bodega_id,
     ubicacion: profile.equipment.ubicacion,
     estado: 'En bodega' as const,
@@ -1291,11 +1292,19 @@ function AsignacionesTab({ equipmentId }: { equipmentId: number }) {
                 </span>
               </td>
               <td className="px-4 py-3 text-sm">
-                {m.empleado_nombre
-                  ? <><p className="text-slate-800 dark:text-slate-200">{m.empleado_nombre}</p>{m.empleado_cedula && <p className="text-xs text-slate-500">{m.empleado_cedula}</p>}</>
-                  : m.bodega_destino_nombre
-                  ? <p className="text-slate-600 dark:text-slate-400">{m.bodega_destino_nombre}</p>
-                  : <span className="text-slate-400 dark:text-slate-600">—</span>}
+                {m.tipo === 'Devolución' || m.tipo === 'Traslado' ? (
+                  m.bodega_destino_nombre ? (
+                    <><p className="text-xs text-slate-400 dark:text-slate-500">→ Bodega</p><p className="text-slate-700 dark:text-slate-300">{m.bodega_destino_nombre}</p></>
+                  ) : m.tipo === 'Devolución' ? (
+                    <span className="text-slate-500 dark:text-slate-400 italic text-xs">→ Disponible</span>
+                  ) : (
+                    <span className="text-slate-400 dark:text-slate-600">—</span>
+                  )
+                ) : m.empleado_nombre ? (
+                  <><p className="text-slate-800 dark:text-slate-200">{m.empleado_nombre}</p>{m.empleado_cedula && <p className="text-xs text-slate-500">{m.empleado_cedula}</p>}</>
+                ) : (
+                  <span className="text-slate-400 dark:text-slate-600">—</span>
+                )}
               </td>
               <td className="px-4 py-3 text-xs text-slate-600 dark:text-slate-400">
                 {m.estado_antes && <span className="text-slate-400 dark:text-slate-600">{m.estado_antes} → </span>}

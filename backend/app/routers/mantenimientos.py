@@ -7,11 +7,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.dependencies import require_any_permission, require_permissions
+from app.dependencies import get_user_dominios, require_any_permission, require_permissions
 from app.models.mantenimiento import Mantenimiento
 from app.models.mantenimiento_paso import MantenimientoPaso
 from app.models.mantenimiento_photo import MantenimientoPhoto
 from app.models.mantenimiento_plantilla import MantenimientoPlantillaPaso
+from app.models.equipment import Equipment
 from app.repositories.equipment_repository import EquipmentRepository
 from app.repositories.mantenimiento_config_repository import MantenimientoConfigRepository
 from app.repositories.mantenimiento_repository import MantenimientoRepository
@@ -35,7 +36,7 @@ from app.schemas.mantenimiento import (
 )
 from app.services.mantenimiento_config_service import MantenimientoConfigService
 from app.services.mantenimiento_dashboard_service import MantenimientoDashboardService
-from app.services.mantenimiento_service import MantenimientoService
+from app.services.mantenimiento_service import MantenimientoService, _paso_to_out
 
 MANTENIMIENTO_STORAGE_DIR = 'storage/mantenimiento_photos'
 router = APIRouter(prefix='/api/v1/mantenimientos', tags=['mantenimientos'])
@@ -56,9 +57,9 @@ def _config_service(db: Session = Depends(get_db)) -> MantenimientoConfigService
 @router.get('/dashboard', response_model=MantenimientosDashboard)
 def get_mantenimientos_dashboard(
     db: Session = Depends(get_db),
-    _user=Depends(require_permissions('mantenimientos:read')),
+    user=Depends(require_permissions('mantenimientos:read')),
 ):
-    return MantenimientoDashboardService(db).get_dashboard()
+    return MantenimientoDashboardService(db).get_dashboard(dominios_permitidos=get_user_dominios(user))
 
 
 @router.get('/config', response_model=MantenimientoConfigListResponse)
@@ -110,6 +111,12 @@ def create_plantilla(
         tipo_mantenimiento=payload.tipo_mantenimiento,
         descripcion=payload.descripcion,
         orden=payload.orden,
+        tipo_campo=payload.tipo_campo,
+        unidad=payload.unidad,
+        opciones=payload.opciones,
+        valor_min=payload.valor_min,
+        valor_max=payload.valor_max,
+        obligatorio=payload.obligatorio,
     )
     db.add(p)
     db.commit()
@@ -143,12 +150,12 @@ def list_mantenimientos(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
     service: MantenimientoService = Depends(_service),
-    _user=Depends(require_permissions('mantenimientos:read')),
+    user=Depends(require_permissions('mantenimientos:read')),
 ):
     if equipment_id is not None:
         items = service.list_by_equipment(equipment_id)
         return {'total': len(items), 'items': items}
-    total, items = service.list_global(sede, tipo, tipo_equipo, estado_vencimiento, proximo_desde, proximo_hasta, estado, skip, limit)
+    total, items = service.list_global(sede, tipo, tipo_equipo, estado_vencimiento, proximo_desde, proximo_hasta, estado, skip, limit, dominios_permitidos=get_user_dominios(user))
     return {'total': total, 'items': items}
 
 
@@ -206,6 +213,7 @@ async def upload_mantenimiento_foto(
     )
     if not m:
         raise HTTPException(status_code=404, detail='Mantenimiento no encontrado')
+    _assert_editable(m)
 
     if file.content_type not in ('image/jpeg', 'image/png', 'image/webp', 'image/gif'):
         raise HTTPException(status_code=400, detail='Solo se permiten imágenes JPEG, PNG, WebP o GIF')
@@ -240,6 +248,7 @@ def delete_mantenimiento_foto(
     db: Session = Depends(get_db),
     _user=Depends(require_permissions('mantenimientos:write')),
 ):
+    _assert_editable(_get_mantenimiento(mantenimiento_id, db))
     photo = db.scalar(
         select(MantenimientoPhoto).where(
             MantenimientoPhoto.id == photo_id,
@@ -268,6 +277,15 @@ def _get_mantenimiento(mantenimiento_id: int, db: Session) -> Mantenimiento:
     return m
 
 
+def _assert_editable(m: Mantenimiento) -> None:
+    """Una OT aprobada es un registro inalterable (trazabilidad/auditoría)."""
+    if m.estado == 'aprobado':
+        raise HTTPException(
+            status_code=400,
+            detail='La OT está aprobada y es un registro inalterable; no admite cambios.',
+        )
+
+
 @router.get('/{mantenimiento_id}/pasos', response_model=list[PasoOut])
 def list_pasos(
     mantenimiento_id: int,
@@ -275,11 +293,7 @@ def list_pasos(
     _user=Depends(require_permissions('mantenimientos:read')),
 ):
     m = _get_mantenimiento(mantenimiento_id, db)
-    return [
-        PasoOut(id=p.id, mantenimiento_id=p.mantenimiento_id, orden=p.orden,
-                descripcion=p.descripcion, completado=p.completado, completado_en=p.completado_en)
-        for p in m.pasos
-    ]
+    return [_paso_to_out(p) for p in m.pasos]
 
 
 @router.post('/{mantenimiento_id}/pasos', response_model=PasoOut, status_code=201)
@@ -289,18 +303,23 @@ def add_paso(
     db: Session = Depends(get_db),
     _user=Depends(require_any_permission('mantenimientos:update', 'mantenimientos:write')),
 ):
-    _get_mantenimiento(mantenimiento_id, db)
+    _assert_editable(_get_mantenimiento(mantenimiento_id, db))
     paso = MantenimientoPaso(
         mantenimiento_id=mantenimiento_id,
         orden=payload.orden,
         descripcion=payload.descripcion,
         completado=False,
+        tipo_campo=payload.tipo_campo,
+        unidad=payload.unidad,
+        opciones=payload.opciones,
+        valor_min=payload.valor_min,
+        valor_max=payload.valor_max,
+        obligatorio=payload.obligatorio,
     )
     db.add(paso)
     db.commit()
     db.refresh(paso)
-    return PasoOut(id=paso.id, mantenimiento_id=paso.mantenimiento_id, orden=paso.orden,
-                   descripcion=paso.descripcion, completado=paso.completado, completado_en=paso.completado_en)
+    return _paso_to_out(paso)
 
 
 @router.patch('/{mantenimiento_id}/pasos/{paso_id}', response_model=PasoOut)
@@ -311,6 +330,7 @@ def update_paso(
     db: Session = Depends(get_db),
     _user=Depends(require_any_permission('mantenimientos:update', 'mantenimientos:write')),
 ):
+    _assert_editable(_get_mantenimiento(mantenimiento_id, db))
     paso = db.scalar(
         select(MantenimientoPaso).where(
             MantenimientoPaso.id == paso_id,
@@ -322,6 +342,13 @@ def update_paso(
 
     if payload.descripcion is not None:
         paso.descripcion = payload.descripcion
+    # Para campos con captura de dato, el valor determina "completado"
+    if payload.valor is not None:
+        paso.valor = payload.valor or None
+        if (paso.tipo_campo or 'checkbox') != 'checkbox':
+            done = bool(paso.valor and paso.valor.strip())
+            paso.completado = done
+            paso.completado_en = datetime.utcnow() if done else None
     if payload.completado is not None:
         paso.completado = payload.completado
         paso.completado_en = datetime.utcnow() if payload.completado else None
@@ -329,8 +356,7 @@ def update_paso(
     db.add(paso)
     db.commit()
     db.refresh(paso)
-    return PasoOut(id=paso.id, mantenimiento_id=paso.mantenimiento_id, orden=paso.orden,
-                   descripcion=paso.descripcion, completado=paso.completado, completado_en=paso.completado_en)
+    return _paso_to_out(paso)
 
 
 @router.delete('/{mantenimiento_id}/pasos/{paso_id}', status_code=204)
@@ -340,6 +366,7 @@ def delete_paso(
     db: Session = Depends(get_db),
     _user=Depends(require_permissions('mantenimientos:write')),
 ):
+    _assert_editable(_get_mantenimiento(mantenimiento_id, db))
     paso = db.scalar(
         select(MantenimientoPaso).where(
             MantenimientoPaso.id == paso_id,
@@ -366,6 +393,8 @@ def iniciar_mantenimiento(
     if m.estado != 'programado':
         raise HTTPException(status_code=400, detail='Solo se puede iniciar una OT programada')
     m.estado = 'en_proceso'
+    if m.iniciado_en is None:
+        m.iniciado_en = datetime.utcnow()  # preparado para KPIs de mano de obra
     db.add(m)
     db.commit()
     db.refresh(m)
@@ -386,6 +415,7 @@ def set_firma_tecnico(
         raise HTTPException(status_code=400, detail='firma_tecnico requerida')
     m.firma_tecnico = firma
     m.estado = 'pendiente_aprobacion'
+    m.finalizado_en = datetime.utcnow()  # preparado para KPIs de mano de obra
     db.add(m)
     db.commit()
     db.refresh(m)
@@ -428,15 +458,23 @@ def get_mis_ot(
     from sqlalchemy import select, or_
     from app.services.mantenimiento_service import _to_out
 
+    dominios_permitidos = get_user_dominios(user)
     estados_activos = ('programado', 'en_proceso', 'pendiente_aprobacion')
-    q = select(Mantenimiento).where(
-        Mantenimiento.is_active.is_(True),
-        Mantenimiento.estado.in_(estados_activos),
-        or_(
-            Mantenimiento.tecnico_id == user.id,
-            Mantenimiento.created_by_id == user.id,
-        ),
-    ).order_by(Mantenimiento.fecha)
+    q = (
+        select(Mantenimiento)
+        .join(Equipment, Mantenimiento.equipment_id == Equipment.id)
+        .where(
+            Mantenimiento.is_active.is_(True),
+            Mantenimiento.estado.in_(estados_activos),
+            or_(
+                Mantenimiento.tecnico_id == user.id,
+                Mantenimiento.created_by_id == user.id,
+            ),
+        )
+    )
+    if dominios_permitidos is not None:
+        q = q.where(Equipment.dominio.in_(dominios_permitidos))
+    q = q.order_by(Mantenimiento.fecha)
     items = list(db.scalars(q).all())
     result = [_to_out(m) for m in items]
     return {'total': len(result), 'items': result}

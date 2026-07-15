@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
 
 import { useAuth } from '@/components/auth-provider';
+import { EmpleadoAutocomplete } from '@/components/empleado-autocomplete';
 import { NavBar } from '@/components/nav-bar';
 import { SignaturePad } from '@/components/signature-pad';
 import {
@@ -35,7 +36,8 @@ function EntregaAsignacionContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { loading: authLoading, hasPermission } = useAuth();
-  const empId = Number(searchParams.get('emp'));
+  const empId = Number(searchParams.get('emp')) || null;
+  const nombreParam = searchParams.get('nombre') ?? '';
   const eqsParam = searchParams.get('eqs') ?? '';
   const eqIds = eqsParam.split(',').map(Number).filter(Boolean);
 
@@ -56,22 +58,23 @@ function EntregaAsignacionContent() {
 
   useEffect(() => {
     if (!isAuthenticated()) { router.replace('/login'); return; }
-    if (!authLoading && !hasPermission('asignaciones:write')) {
+    if (!authLoading && !hasPermission('asignaciones:write') && !hasPermission('asignaciones:entregar')) {
       router.replace('/asignaciones');
       return;
     }
     if (authLoading) return;
-    if (!empId || eqIds.length === 0) { setError('Parámetros inválidos.'); setLoading(false); return; }
+    if (eqIds.length === 0) { setError('Parámetros inválidos.'); setLoading(false); return; }
 
     listAsignacionesActivas()
       .then(async (activas) => {
-        const matching = activas.items.filter(
-          (a) => a.empleado_id === empId && eqIds.includes(a.equipment_id)
+        const matching = activas.items.filter((a) =>
+          eqIds.includes(a.equipment_id) &&
+          (empId ? a.empleado_id === empId : true)
         );
         if (matching.length === 0) { setError('No se encontraron asignaciones activas.'); return; }
         setAsignacion(matching[0]);
         setEntregaNombre(matching[0].created_by_nombre ?? '');
-        setRecibeNombre(matching[0].empleado_nombre ?? '');
+        setRecibeNombre(matching[0].empleado_nombre ?? nombreParam);
 
         const items: EquipoItem[] = [];
         await Promise.all(
@@ -150,7 +153,7 @@ function EntregaAsignacionContent() {
         firma_entrega: firmaEntrega ?? undefined,
         firma_recibe: firmaRecibe ?? undefined,
         equipos_snapshot: snapshot,
-        empleado_id: empId,
+        empleado_id: empId ?? undefined,
         observaciones: observaciones.trim() || undefined,
       });
       setActaId(acta.id);
@@ -352,24 +355,22 @@ function EntregaAsignacionContent() {
             <div className="rounded-2xl border border-slate-200 bg-white p-6 dark:border-slate-700 dark:bg-slate-900">
               <p className="mb-4 text-xs font-semibold uppercase tracking-widest text-slate-600 dark:text-slate-400">Datos del acta</p>
               <div className="grid grid-cols-2 gap-4">
-                <label className="flex flex-col gap-1.5">
-                  <span className="text-xs text-slate-600 dark:text-slate-400">Quien entrega *</span>
-                  <input
-                    value={entregaNombre}
-                    onChange={(e) => setEntregaNombre(e.target.value)}
-                    placeholder="Nombre completo"
-                    className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:border-indigo-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:placeholder-slate-600"
-                  />
-                </label>
-                <label className="flex flex-col gap-1.5">
-                  <span className="text-xs text-slate-600 dark:text-slate-400">Quien recibe *</span>
-                  <input
-                    value={recibeNombre}
-                    onChange={(e) => setRecibeNombre(e.target.value)}
-                    placeholder="Nombre completo"
-                    className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:border-indigo-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:placeholder-slate-600"
-                  />
-                </label>
+                <EmpleadoAutocomplete
+                  label="Quien entrega"
+                  required
+                  value={entregaNombre}
+                  onChange={setEntregaNombre}
+                  sede={asignacion?.equipment_sede}
+                  placeholder="Buscar por nombre..."
+                />
+                <EmpleadoAutocomplete
+                  label="Quien recibe"
+                  required
+                  value={recibeNombre}
+                  onChange={setRecibeNombre}
+                  sede={asignacion?.equipment_sede}
+                  placeholder="Buscar por nombre..."
+                />
               </div>
               <label className="mt-4 flex flex-col gap-1.5">
                 <span className="text-xs text-slate-600 dark:text-slate-400">Observaciones (opcional)</span>

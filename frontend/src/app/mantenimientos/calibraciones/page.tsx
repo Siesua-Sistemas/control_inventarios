@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 
 import { NavBar } from '@/components/nav-bar';
 import { isAuthenticated, listCalibraciones, type CalibracionItem } from '@/lib/api';
+import { MantenimientosSubNav } from '@/app/mantenimientos/_components/mantenimientos-subnav';
 
 const CRITICIDAD_COLORS: Record<string, string> = {
   Alta: 'bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-300',
@@ -62,10 +63,12 @@ export default function CalibracionesPage() {
     <>
       <NavBar />
       <main className="mx-auto max-w-7xl px-4 py-8">
-        <div className="mb-8">
-          <p className="text-sm uppercase tracking-[0.3em] text-cyan-700 dark:text-cyan-300">Sistema de inventario</p>
-          <h1 className="mt-1 text-3xl font-bold">Mantenimientos</h1>
+        <div className="mb-6">
+          <p className="text-sm uppercase tracking-[0.3em] text-cyan-700 dark:text-cyan-300">Mantenimiento</p>
+          <h1 className="mt-1 text-3xl font-bold">Calibraciones</h1>
         </div>
+
+        <MantenimientosSubNav />
 
         <div className="mb-6">
           <h2 className="mb-4 text-lg font-semibold">Calibraciones y metrología</h2>

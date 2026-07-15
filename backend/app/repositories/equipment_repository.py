@@ -15,10 +15,19 @@ class EquipmentRepository:
         sede: str | None = None,
         estado: str | None = None,
         criticidad: str | None = None,
+        dominio_filter: str | None = None,
+        dominios_permitidos: list[str] | None = None,
         skip: int = 0,
         limit: int | None = None,
     ) -> tuple[list[Equipment], int]:
         query = select(Equipment).where(Equipment.is_active.is_(True))
+
+        # Filtro de dominio por rol del usuario (None = superusuario, ve todo)
+        if dominios_permitidos is not None:
+            query = query.where(Equipment.dominio.in_(dominios_permitidos))
+        # Filtro de dominio elegido por el usuario en la UI
+        if dominio_filter:
+            query = query.where(Equipment.dominio == dominio_filter)
 
         if search:
             term = f'%{search}%'

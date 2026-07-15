@@ -5,8 +5,10 @@ from pydantic import BaseModel
 
 class EntregarRequest(BaseModel):
     equipment_id: int
-    empleado_id: int
+    empleado_id: int | None = None
     bodega_origen_id: int | None = None
+    sede_destino: str | None = None
+    responsable_nombre: str | None = None
     observaciones: str | None = None
 
 
@@ -24,8 +26,10 @@ class TrasladarRequest(BaseModel):
 
 class EntregarMultipleRequest(BaseModel):
     equipment_ids: list[int]
-    empleado_id: int
+    empleado_id: int | None = None
     bodega_origen_id: int | None = None
+    sede_destino: str | None = None
+    responsable_nombre: str | None = None
     observaciones: str | None = None
 
 

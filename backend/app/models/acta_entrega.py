@@ -11,6 +11,7 @@ class ActaEntrega(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     tipo = Column(String(20), nullable=False)          # 'bodega' | 'asignacion'
+    dominio = Column(String(30), nullable=False, default='IT', server_default='IT')
     sede = Column(String(120), nullable=False)
     titulo = Column(String(200), nullable=False)       # nombre bodega o empleado
 

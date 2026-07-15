@@ -8,6 +8,7 @@ import { EquipoModal } from '@/components/equipo-modal';
 import { MantenimientoModal } from '@/components/mantenimiento-modal';
 import { NavBar } from '@/components/nav-bar';
 import { PhotoGrid } from '@/components/photo-grid';
+import { MantenimientosSubNav } from '@/app/mantenimientos/_components/mantenimientos-subnav';
 import {
   createMantenimiento,
   deleteMantenimientoPhoto,
@@ -292,10 +293,12 @@ export default function MantenimientosRegistrosPage() {
           />
         )}
 
-        <div className="mb-8">
-          <p className="text-sm uppercase tracking-[0.3em] text-cyan-700 dark:text-cyan-300">Sistema de inventario</p>
-          <h1 className="mt-1 text-3xl font-bold">Mantenimientos</h1>
+        <div className="mb-6">
+          <p className="text-sm uppercase tracking-[0.3em] text-cyan-700 dark:text-cyan-300">Mantenimiento</p>
+          <h1 className="mt-1 text-3xl font-bold">Órdenes de trabajo</h1>
         </div>
+
+        <MantenimientosSubNav />
 
         {/* Tab switcher */}
         <div className="mb-5 flex items-center justify-between">

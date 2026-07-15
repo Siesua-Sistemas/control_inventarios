@@ -11,6 +11,7 @@ class EquipmentTipo(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     nombre = Column(String(80), unique=True, nullable=False, index=True)
+    dominio = Column(String(30), nullable=False, default='IT', server_default='IT')
     es_periferico = Column(Boolean, default=False, nullable=False)
     activo = Column(Boolean, default=True, nullable=False)
     orden = Column(Integer, nullable=False, default=0)

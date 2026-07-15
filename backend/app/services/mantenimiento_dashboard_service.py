@@ -16,22 +16,25 @@ class MantenimientoDashboardService:
     def __init__(self, db: Session):
         self.db = db
 
-    def get_dashboard(self) -> MantenimientosDashboard:
+    def get_dashboard(self, dominios_permitidos: list[str] | None = None) -> MantenimientosDashboard:
         today = date.today()
 
         eq_base = [Equipment.is_active.is_(True)]
+        if dominios_permitidos is not None:
+            eq_base.append(Equipment.dominio.in_(dominios_permitidos))
 
         # Subquery: último proximo_mantenimiento por equipo
-        mant_subq_base = [
-            Mantenimiento.is_active.is_(True),
-            Mantenimiento.proximo_mantenimiento.isnot(None),
-        ]
         mant_subq_base_q = (
             select(
                 Mantenimiento.equipment_id.label('eq_id'),
                 func.max(Mantenimiento.proximo_mantenimiento).label('latest_proximo'),
             )
-            .where(*mant_subq_base)
+            .join(Equipment, Mantenimiento.equipment_id == Equipment.id)
+            .where(
+                Mantenimiento.is_active.is_(True),
+                Mantenimiento.proximo_mantenimiento.isnot(None),
+                *([Equipment.dominio.in_(dominios_permitidos)] if dominios_permitidos is not None else []),
+            )
             .group_by(Mantenimiento.equipment_id)
         )
         latest_by_eq = mant_subq_base_q.subquery()
@@ -78,12 +81,18 @@ class MantenimientoDashboardService:
         first_of_month = today.replace(day=1)
         first_of_year = today.replace(month=1, day=1)
 
-        mant_cost_q = select(func.coalesce(func.sum(Mantenimiento.costo), 0)).select_from(Mantenimiento)
+        mant_cost_q = (
+            select(func.coalesce(func.sum(Mantenimiento.costo), 0))
+            .select_from(Mantenimiento)
+            .join(Equipment, Mantenimiento.equipment_id == Equipment.id)
+        )
+        domain_filter = [Equipment.dominio.in_(dominios_permitidos)] if dominios_permitidos is not None else []
 
         costo_mes = self.db.scalar(
             mant_cost_q.where(
                 Mantenimiento.is_active.is_(True),
                 Mantenimiento.fecha >= first_of_month,
+                *domain_filter,
             )
         ) or Decimal('0')
 
@@ -91,6 +100,7 @@ class MantenimientoDashboardService:
             mant_cost_q.where(
                 Mantenimiento.is_active.is_(True),
                 Mantenimiento.fecha >= first_of_year,
+                *domain_filter,
             )
         ) or Decimal('0')
 

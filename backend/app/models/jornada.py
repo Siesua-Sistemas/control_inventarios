@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String
 
 from app.database import Base
 
@@ -19,3 +19,4 @@ class RegistroJornada(Base):
     longitud = Column(Float, nullable=True)
     ip_publica = Column(String(45), nullable=True)
     dispositivo = Column(String(300), nullable=True)
+    is_manual = Column(Boolean, default=False, server_default='false', nullable=False)

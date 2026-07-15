@@ -3,10 +3,11 @@ from pathlib import Path
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.dependencies import get_user_dominios
 from app.models.audit_log import AuditLog
 from app.models.bodega import Bodega
 from app.models.empleado import Empleado
@@ -56,14 +57,23 @@ _ESTADOS_TICKET_ACTIVOS = ('abierto', 'en_revision', 'en_proceso', 'pendiente_us
 
 
 def _auto_asignar_ticket(db: Session, ticket: Ticket) -> None:
-    """Asigna el ticket al usuario con tickets:read que tenga menor carga activa."""
+    """Asigna el ticket al técnico (tickets:read) del dominio del ticket con menor carga activa.
+
+    Si ningún técnico atiende ese dominio, se deja sin asignar para que el supervisor
+    lo asigne manualmente (evita asignar Bioingeniería a un técnico de IT).
+    """
     candidatos: list[User] = db.execute(
         select(User).where(User.is_active.is_(True))
     ).scalars().all()
 
+    def atiende_dominio(u: User) -> bool:
+        doms = get_user_dominios(u)  # None => superusuario (todos)
+        return doms is None or ticket.dominio in doms
+
     tecnicos = [
         u for u in candidatos
         if any(p.code == 'tickets:read' for role in u.roles for p in role.permissions)
+        and atiende_dominio(u)
     ]
     if not tecnicos:
         return
@@ -140,16 +150,25 @@ def verificar(body: VerificarRequest, request: Request, db: Session = Depends(ge
         )
     ).scalars().all()
 
-    # Equipos en bodegas de la sede del empleado
+    # Equipos de la sede del empleado: en bodegas de la sede O ubicados en la sede
+    # (los equipos de Bioingeniería suelen estar en salas, sin bodega ni empleado asignado).
     bodegas_sede = db.execute(
         select(Bodega.id).where(Bodega.sede == empleado.sede, Bodega.is_active.is_(True))
     ).scalars().all()
 
-    eq_bodega = []
+    # Match tolerante de sede: el nombre en empleados ("COLINA") puede no ser idéntico
+    # al de equipment ("CC PARQUE COLINA"). Se usa contención insensible a mayúsculas.
+    condiciones_sede = []
+    if empleado.sede and empleado.sede.strip():
+        condiciones_sede.append(Equipment.sede.ilike(f'%{empleado.sede.strip()}%'))
     if bodegas_sede:
+        condiciones_sede.append(Equipment.bodega_id.in_(bodegas_sede))
+
+    eq_bodega = []
+    if condiciones_sede:
         eq_bodega = db.execute(
             select(Equipment).where(
-                Equipment.bodega_id.in_(bodegas_sede),
+                or_(*condiciones_sede),
                 Equipment.is_active.is_(True),
             )
         ).scalars().all()
@@ -164,6 +183,7 @@ def verificar(body: VerificarRequest, request: Request, db: Session = Depends(ge
             marca=eq.marca,
             modelo=eq.modelo,
             estado=eq.estado,
+            dominio=eq.dominio,
             bodega_nombre=bodega_nombre,
         )
 
@@ -231,6 +251,7 @@ def crear_ticket(body: TicketPublicoCreate, request: Request, db: Session = Depe
         documento_identidad=body.documento,
         empleado_nombre=f'{empleado.nombres} {empleado.apellidos}',
         sede=empleado.sede or '',
+        dominio=body.dominio if body.dominio in ('IT', 'Bioingeniería', 'General') else 'IT',
         categoria=body.categoria,
         tipo_solicitud=body.tipo_solicitud,
         asunto=body.asunto,
@@ -279,6 +300,7 @@ def get_ticket_portal(ticket_id: int, db: Session = Depends(get_db)):
         numero=f'TKT-{ticket.id:06d}',
         asunto=ticket.asunto,
         descripcion=ticket.descripcion,
+        dominio=ticket.dominio,
         categoria=ticket.categoria,
         tipo_solicitud=ticket.tipo_solicitud,
         estado=ticket.estado,
@@ -353,6 +375,7 @@ def get_tickets_por_documento(documento: str, db: Session = Depends(get_db)):
             id=t.id,
             numero=f'TKT-{t.id:06d}',
             asunto=t.asunto,
+            dominio=t.dominio,
             categoria=t.categoria,
             tipo_solicitud=t.tipo_solicitud,
             estado=t.estado,

@@ -8,10 +8,11 @@ class EquipmentTipoRepository:
     def __init__(self, db: Session):
         self.db = db
 
-    def list_all(self) -> list[EquipmentTipo]:
-        return list(
-            self.db.scalars(select(EquipmentTipo).order_by(EquipmentTipo.orden, EquipmentTipo.nombre)).all()
-        )
+    def list_all(self, dominios_permitidos: list[str] | None = None) -> list[EquipmentTipo]:
+        query = select(EquipmentTipo)
+        if dominios_permitidos is not None:
+            query = query.where(EquipmentTipo.dominio.in_(dominios_permitidos))
+        return list(self.db.scalars(query.order_by(EquipmentTipo.orden, EquipmentTipo.nombre)).all())
 
     def get_by_id(self, tipo_id: int) -> EquipmentTipo | None:
         return self.db.scalar(select(EquipmentTipo).where(EquipmentTipo.id == tipo_id))

@@ -33,6 +33,7 @@ class EquipoBrief(BaseModel):
     marca: str
     modelo: str
     estado: str
+    dominio: str | None = None
     bodega_nombre: str | None = None
 
     class Config:
@@ -48,6 +49,7 @@ class VerificarResponse(BaseModel):
 
 class TicketPublicoCreate(BaseModel):
     documento: str
+    dominio: str = 'IT'
     categoria: str = 'Incidente'
     tipo_solicitud: str = 'Hardware'
     asunto: str
@@ -71,6 +73,7 @@ class TicketPortalOut(BaseModel):
     id: int
     numero: str
     asunto: str
+    dominio: str
     categoria: str
     tipo_solicitud: str
     estado: str
@@ -122,6 +125,7 @@ class TicketPortalDetailOut(BaseModel):
     numero: str
     asunto: str
     descripcion: str
+    dominio: str
     categoria: str
     tipo_solicitud: str
     estado: str
@@ -143,6 +147,7 @@ class TicketOut(BaseModel):
     documento_identidad: str
     empleado_nombre: str
     sede: str
+    dominio: str
     categoria: str
     tipo_solicitud: str
     asunto: str
@@ -164,6 +169,7 @@ class TicketOut(BaseModel):
 class TicketUpdate(BaseModel):
     estado: str | None = None
     prioridad: str | None = None
+    dominio: str | None = None
     asignado_a_id: int | None = None
     resolucion: str | None = None
 

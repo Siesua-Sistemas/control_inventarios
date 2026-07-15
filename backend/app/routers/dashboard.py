@@ -5,7 +5,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.dependencies import require_permissions
+from app.dependencies import get_user_dominios, require_permissions
 from app.models.bodega import Bodega
 from app.models.empleado import Empleado
 from app.models.equipment import Equipment
@@ -25,9 +25,12 @@ router = APIRouter(prefix='/api/v1/dashboard', tags=['dashboard'])
 @router.get('', response_model=DashboardStats)
 def get_stats(
     db: Session = Depends(get_db),
-    _user=Depends(require_permissions()),
+    user=Depends(require_permissions()),
 ):
+    dominios_permitidos = get_user_dominios(user)
     eq_filter = [Equipment.is_active.is_(True)]
+    if dominios_permitidos is not None:
+        eq_filter.append(Equipment.dominio.in_(dominios_permitidos))
 
     total_equipos = db.scalar(select(func.count()).where(*eq_filter)) or 0
     total_bodegas = db.scalar(select(func.count()).where(Bodega.is_active.is_(True))) or 0
@@ -57,11 +60,13 @@ def get_stats(
 @router.get('/inventario', response_model=InventarioDashboard)
 def get_inventario_dashboard(
     db: Session = Depends(get_db),
-    _user=Depends(require_permissions()),
+    user=Depends(require_permissions()),
 ):
     today = date.today()
-
+    dominios_permitidos = get_user_dominios(user)
     eq_filter = [Equipment.is_active.is_(True)]
+    if dominios_permitidos is not None:
+        eq_filter.append(Equipment.dominio.in_(dominios_permitidos))
 
     total_equipos = db.scalar(select(func.count()).where(*eq_filter)) or 0
 

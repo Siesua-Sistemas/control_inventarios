@@ -22,6 +22,7 @@ class Ticket(Base):
     documento_identidad = Column(String(30), nullable=False, index=True)
     empleado_nombre     = Column(String(200), nullable=False)
     sede                = Column(String(100), nullable=False)
+    dominio             = Column(String(30), nullable=False, default='General', server_default='IT')
     categoria           = Column(String(30), nullable=False, default='Incidente')
     tipo_solicitud      = Column(String(30), nullable=False, default='Hardware')
     asunto              = Column(String(200), nullable=False)

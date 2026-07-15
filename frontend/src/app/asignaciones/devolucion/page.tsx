@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
 
 import { useAuth } from '@/components/auth-provider';
+import { EmpleadoAutocomplete } from '@/components/empleado-autocomplete';
 import { NavBar } from '@/components/nav-bar';
 import { SignaturePad } from '@/components/signature-pad';
 import {
@@ -338,18 +339,18 @@ function DevolucionContent() {
             <div className="rounded-2xl border border-slate-200 bg-white p-6 dark:border-slate-700 dark:bg-slate-900">
               <p className="mb-4 text-xs font-semibold uppercase tracking-widest text-slate-600 dark:text-slate-400">Datos del acta de devolución</p>
               <div className="grid gap-4 sm:grid-cols-2">
-                <label className="flex flex-col gap-1.5">
-                  <span className="text-xs text-slate-600 dark:text-slate-400">Quien entrega (empleado) *</span>
-                  <input value={entregaNombre} onChange={(e) => setEntregaNombre(e.target.value)}
-                    placeholder="Nombre del empleado"
-                    className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:border-cyan-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:placeholder-slate-600" />
-                </label>
-                <label className="flex flex-col gap-1.5">
-                  <span className="text-xs text-slate-600 dark:text-slate-400">Quien recibe (empresa) *</span>
-                  <input value={recibeNombre} onChange={(e) => setRecibeNombre(e.target.value)}
-                    placeholder="Nombre de quien recibe"
-                    className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:border-cyan-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:placeholder-slate-600" />
-                </label>
+                <EmpleadoAutocomplete
+                  label="Quien entrega (empleado) *"
+                  value={entregaNombre}
+                  onChange={setEntregaNombre}
+                  placeholder="Nombre del empleado"
+                />
+                <EmpleadoAutocomplete
+                  label="Quien recibe (empresa) *"
+                  value={recibeNombre}
+                  onChange={setRecibeNombre}
+                  placeholder="Nombre de quien recibe"
+                />
               </div>
               <label className="mt-4 flex flex-col gap-1.5">
                 <span className="text-xs text-slate-600 dark:text-slate-400">Observaciones del estado del equipo</span>

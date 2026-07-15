@@ -12,10 +12,16 @@ import { ESTADO_COLORS } from '@/lib/constants';
 
 const ESTADOS = ['Disponible', 'Asignado', 'En mantenimiento', 'Dañado', 'Prestado', 'En bodega', 'Perdido', 'Dado de baja'];
 const CRITICIDADES = ['Alta', 'Media', 'Baja'];
+const DOMINIOS = ['IT', 'Bioingeniería', 'General'];
 const CRITICIDAD_COLORS: Record<string, string> = {
   Alta: 'bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-300',
   Media: 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300',
   Baja: 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300',
+};
+const DOMINIO_COLORS: Record<string, string> = {
+  IT: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-500/20 dark:text-cyan-300',
+  'Bioingeniería': 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300',
+  General: 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300',
 };
 const PAGE_SIZE = 50;
 
@@ -40,7 +46,7 @@ export default function EquiposPage() {
   const canViewHojaVida = authLoading || hasPermission('equipment:hoja_vida');
   const canExport = authLoading || hasPermission('reports:export');
   const [equipos, setEquipos] = useState<EquipmentRow[]>([]);
-  const [tipos, setTipos] = useState<EquipmentTipo[]>([]);
+  const [allTipos, setAllTipos] = useState<EquipmentTipo[]>([]);
   const [sedes, setSedes] = useState<string[]>([]);
   const [modalEquipoId, setModalEquipoId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
@@ -54,8 +60,11 @@ export default function EquiposPage() {
   const [filterSede, setFilterSede] = useState('');
   const [filterEstado, setFilterEstado] = useState('');
   const [filterCriticidad, setFilterCriticidad] = useState('');
+  const [filterDominio, setFilterDominio] = useState('');
   const [sortField, setSortField] = useState<SortField>('codigo_interno');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+
+  const tipos = filterDominio ? allTipos.filter((t) => t.dominio === filterDominio) : allTipos;
 
   const toggleSort = (field: SortField) => {
     if (sortField === field) {
@@ -75,10 +84,10 @@ export default function EquiposPage() {
     listEquipment().then((r) => {
       setSedes(Array.from(new Set(r.items.map((e) => e.sede))).sort((a, b) => a.localeCompare(b, 'es')));
     }).catch(() => null);
-    listEquipmentTipos().then((r) => setTipos(r.items.filter((t) => t.activo))).catch(() => null);
+    listEquipmentTipos().then((r) => setAllTipos(r.items.filter((t) => t.activo))).catch(() => null);
   }, [router]);
 
-  async function fetchEquipos(params?: { search?: string; tipo?: string; sede?: string; estado?: string; criticidad?: string }, p = 0) {
+  async function fetchEquipos(params?: { search?: string; tipo?: string; sede?: string; estado?: string; criticidad?: string; dominio?: string }, p = 0) {
     setLoading(true);
     setError('');
     try {
@@ -88,6 +97,7 @@ export default function EquiposPage() {
         sede: params?.sede ?? filterSede,
         estado: params?.estado ?? filterEstado,
         criticidad: params?.criticidad ?? filterCriticidad,
+        dominio: params?.dominio ?? filterDominio,
         skip: p * PAGE_SIZE,
         limit: PAGE_SIZE,
       });
@@ -109,7 +119,7 @@ export default function EquiposPage() {
     setExporting(true);
     setError('');
     try {
-      await exportEquiposCsv({ search, tipo: filterTipo, sede: filterSede, estado: filterEstado, criticidad: filterCriticidad });
+      await exportEquiposCsv({ search, tipo: filterTipo, sede: filterSede, estado: filterEstado, criticidad: filterCriticidad, dominio: filterDominio });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al exportar');
     } finally {
@@ -122,12 +132,17 @@ export default function EquiposPage() {
     fetchEquipos();
   }
 
-  function handleFilterChange(tipo: string, sede: string, estado: string, criticidad: string) {
-    setFilterTipo(tipo);
+  function handleFilterChange(tipo: string, sede: string, estado: string, criticidad: string, dominio: string) {
+    // Si cambia el dominio, limpiar el filtro de tipo si el tipo actual no pertenece al nuevo dominio
+    const tiposDelDominio = dominio ? allTipos.filter((t) => t.dominio === dominio) : allTipos;
+    const tipoValido = !tipo || tiposDelDominio.some((t) => t.nombre === tipo);
+    const tipoFinal = tipoValido ? tipo : '';
+    setFilterTipo(tipoFinal);
     setFilterSede(sede);
     setFilterEstado(estado);
     setFilterCriticidad(criticidad);
-    fetchEquipos({ tipo, sede, estado, criticidad });
+    setFilterDominio(dominio);
+    fetchEquipos({ tipo: tipoFinal, sede, estado, criticidad, dominio });
   }
 
   async function handleDelete(equipo: EquipmentRow) {
@@ -185,7 +200,7 @@ export default function EquiposPage() {
 
           <select
             value={filterTipo}
-            onChange={(e) => handleFilterChange(e.target.value, filterSede, filterEstado, filterCriticidad)}
+            onChange={(e) => handleFilterChange(e.target.value, filterSede, filterEstado, filterCriticidad, filterDominio)}
             className="min-w-[140px]"
           >
             <option value="">Todos los tipos</option>
@@ -194,7 +209,7 @@ export default function EquiposPage() {
 
           <select
             value={filterSede}
-            onChange={(e) => handleFilterChange(filterTipo, e.target.value, filterEstado, filterCriticidad)}
+            onChange={(e) => handleFilterChange(filterTipo, e.target.value, filterEstado, filterCriticidad, filterDominio)}
             className="min-w-[160px]"
           >
             <option value="">Todas las sedes</option>
@@ -203,7 +218,7 @@ export default function EquiposPage() {
 
           <select
             value={filterEstado}
-            onChange={(e) => handleFilterChange(filterTipo, filterSede, e.target.value, filterCriticidad)}
+            onChange={(e) => handleFilterChange(filterTipo, filterSede, e.target.value, filterCriticidad, filterDominio)}
             className="min-w-[160px]"
           >
             <option value="">Todos los estados</option>
@@ -212,14 +227,23 @@ export default function EquiposPage() {
 
           <select
             value={filterCriticidad}
-            onChange={(e) => handleFilterChange(filterTipo, filterSede, filterEstado, e.target.value)}
+            onChange={(e) => handleFilterChange(filterTipo, filterSede, filterEstado, e.target.value, filterDominio)}
             className="min-w-[140px]"
           >
             <option value="">Toda criticidad</option>
             {CRITICIDADES.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
 
-          {(search || filterTipo || filterSede || filterEstado || filterCriticidad) && (
+          <select
+            value={filterDominio}
+            onChange={(e) => handleFilterChange(filterTipo, filterSede, filterEstado, filterCriticidad, e.target.value)}
+            className="min-w-[130px]"
+          >
+            <option value="">Todo dominio</option>
+            {DOMINIOS.map((d) => <option key={d} value={d}>{d}</option>)}
+          </select>
+
+          {(search || filterTipo || filterSede || filterEstado || filterCriticidad || filterDominio) && (
             <button
               type="button"
               className="bg-slate-100 px-3 py-2 text-slate-700 dark:bg-slate-800 dark:text-slate-300"
@@ -229,7 +253,8 @@ export default function EquiposPage() {
                 setFilterSede('');
                 setFilterEstado('');
                 setFilterCriticidad('');
-                fetchEquipos({ search: '', tipo: '', sede: '', estado: '', criticidad: '' });
+                setFilterDominio('');
+                fetchEquipos({ search: '', tipo: '', sede: '', estado: '', criticidad: '', dominio: '' });
               }}
             >
               Limpiar
@@ -265,19 +290,20 @@ export default function EquiposPage() {
                   </th>
                 ))}
                 <th className="hidden lg:table-cell px-4 py-3">Criticidad</th>
+                <th className="hidden xl:table-cell px-4 py-3">Dominio</th>
                 <th className="px-4 py-3 text-right">Acciones</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-10 text-center text-slate-600 dark:text-slate-400">
+                  <td colSpan={9} className="px-4 py-10 text-center text-slate-600 dark:text-slate-400">
                     Cargando equipos...
                   </td>
                 </tr>
               ) : equipos.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-10 text-center text-slate-600 dark:text-slate-400">
+                  <td colSpan={9} className="px-4 py-10 text-center text-slate-600 dark:text-slate-400">
                     No se encontraron equipos.
                   </td>
                 </tr>
@@ -313,6 +339,11 @@ export default function EquiposPage() {
                     <td className="hidden lg:table-cell px-4 py-3">
                       <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${CRITICIDAD_COLORS[equipo.criticidad] ?? CRITICIDAD_COLORS.Media}`}>
                         {equipo.criticidad}
+                      </span>
+                    </td>
+                    <td className="hidden xl:table-cell px-4 py-3">
+                      <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${DOMINIO_COLORS[equipo.dominio] ?? DOMINIO_COLORS.General}`}>
+                        {equipo.dominio}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-right">

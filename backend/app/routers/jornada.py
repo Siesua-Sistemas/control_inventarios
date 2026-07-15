@@ -1,3 +1,4 @@
+import calendar
 import math
 from collections import defaultdict
 from datetime import date, datetime, timezone, timedelta
@@ -74,6 +75,49 @@ async def _guardar_foto(foto: UploadFile | None, empleado_id: int) -> str | None
     return f'/storage/jornadas/{fname}'
 
 
+def _ultimo_domingo_mes(year: int, month: int) -> date:
+    """Retorna la fecha del último domingo del mes dado."""
+    last_day = calendar.monthrange(year, month)[1]
+    d = date(year, month, last_day)
+    # weekday(): Lunes=0 … Domingo=6
+    offset = (d.weekday() + 1) % 7  # días a retroceder para llegar al domingo
+    return d - timedelta(days=offset)
+
+
+def _almuerzo_minutos(fecha_dia: date, horario_config: dict | None) -> int:
+    """
+    Minutos de almuerzo a descontar del tiempo bruto según el tipo de horario de la sede.
+
+    Turno único:
+      Lun–Sáb → almuerzo_semana_min / almuerzo_sabado_min
+      Dom     → almuerzo_domingo_min solo si es el último domingo del mes
+
+    Doble turno:
+      Lun–Vie → 0 (sin almuerzo)
+      Sáb/Dom → almuerzo_sabado_min / almuerzo_domingo_min (cuando haya registro)
+    """
+    if not horario_config:
+        return 0
+    wd = fecha_dia.weekday()  # 0=Lun … 6=Dom
+    if wd < 5:
+        return int(horario_config.get('almuerzo_semana_min', 0))
+    if wd == 5:
+        return int(horario_config.get('almuerzo_sabado_min', 0))
+    # Domingo
+    regla = horario_config.get('domingo_regla', 'si_trabaja')
+    if regla == 'ultimo_mes' and fecha_dia != _ultimo_domingo_mes(fecha_dia.year, fecha_dia.month):
+        return 0  # domingo no programado para esta sede
+    return int(horario_config.get('almuerzo_domingo_min', 0))
+
+
+def _horarios_por_nombre(db: Session) -> dict[str, dict]:
+    """Carga horario_config de todas las sedes activas, indexado por nombre."""
+    return {
+        s.nombre: (s.horario_config or {})
+        for s in db.scalars(select(SedeJornada).where(SedeJornada.is_active.is_(True))).all()
+    }
+
+
 def _emp_sedes_ids(db: Session, empleado_id: int) -> list[int]:
     return list(db.scalars(
         select(empleado_sedes_jornada.c.sede_jornada_id)
@@ -107,6 +151,7 @@ class RegistroJornadaOut(BaseModel):
     longitud: float | None
     ip_publica: str | None
     dispositivo: str | None
+    is_manual: bool = False
 
     @field_validator('timestamp', mode='before')
     @classmethod
@@ -151,7 +196,8 @@ class DiaRegistros(BaseModel):
     dia_semana: str     # "Lunes"
     es_hoy: bool
     registros: list[RegistroJornadaOut]
-    tiempo_sede: str | None  # "8h 30m" o None si sin par entrada-salida
+    tiempo_sede: str | None  # tiempo NETO (descontado almuerzo) o None si sin par
+    almuerzo_min: int = 0   # minutos de almuerzo descontados (para info)
 
 
 class SemanaResponse(BaseModel):
@@ -175,6 +221,7 @@ class SedeJornadaOut(BaseModel):
     tipo: str  # 'empresa' | 'home_office'
     is_active: bool
     bodegas: list[BodegaInfo] = []
+    horario_config: dict | None = None
 
 
 class SedeJornadaCreate(BaseModel):
@@ -187,6 +234,7 @@ class SedeJornadaCreate(BaseModel):
     ip_autorizada: str | None = None
     tipo: str = 'empresa'
     bodega_ids: list[int] = []
+    horario_config: dict | None = None
 
 
 class SedeJornadaUpdate(BaseModel):
@@ -200,6 +248,7 @@ class SedeJornadaUpdate(BaseModel):
     tipo: str | None = None
     is_active: bool | None = None
     bodega_ids: list[int] | None = None
+    horario_config: dict | None = None
 
 
 class RegistroResumen(BaseModel):
@@ -250,6 +299,7 @@ def _sede_to_out(sede: SedeJornada) -> SedeJornadaOut:
         tipo=sede.tipo,
         is_active=sede.is_active,
         bodegas=[BodegaInfo(id=b.id, nombre=b.nombre) for b in (sede.bodegas or [])],
+        horario_config=sede.horario_config,
     )
 
 
@@ -442,6 +492,8 @@ def get_semana(cedula: str, db: Session = Depends(get_db)):
         .order_by(RegistroJornada.timestamp.asc())
     ).all())
 
+    horarios = _horarios_por_nombre(db)
+
     dias: list[DiaRegistros] = []
     for i in range(7):
         fecha_dia = lunes + timedelta(days=i)
@@ -450,14 +502,23 @@ def get_semana(cedula: str, db: Session = Depends(get_db)):
             if (r.timestamp + BOGOTA_OFFSET).date() == fecha_dia
         ]
 
-        entrada_r = next((r for r in regs if r.tipo == 'entrada'), None)
-        salida_r = next((r for r in regs if r.tipo == 'salida'), None)
+        entradas_ord = sorted([r for r in regs if r.tipo == 'entrada'], key=lambda r: r.timestamp)
+        salidas_ord  = sorted([r for r in regs if r.tipo == 'salida'],  key=lambda r: r.timestamp)
+        pares = min(len(entradas_ord), len(salidas_ord))
 
         tiempo_sede = None
-        if entrada_r and salida_r:
-            delta = salida_r.timestamp - entrada_r.timestamp
-            total_min = int(delta.total_seconds() // 60)
-            tiempo_sede = f"{total_min // 60}h {total_min % 60:02d}m"
+        almuerzo_min = 0
+        if pares > 0:
+            bruto_min = sum(
+                max(0, int((salidas_ord[j].timestamp - entradas_ord[j].timestamp).total_seconds() // 60))
+                for j in range(pares)
+            )
+            # Descuento de almuerzo según sede del primer registro del día
+            sede_del_dia = regs[0].sede if regs else None
+            horario_cfg = horarios.get(sede_del_dia) if sede_del_dia else None
+            almuerzo_min = _almuerzo_minutos(fecha_dia, horario_cfg)
+            neto_min = max(0, bruto_min - almuerzo_min)
+            tiempo_sede = f"{neto_min // 60}h {neto_min % 60:02d}m"
 
         dias.append(DiaRegistros(
             fecha=fecha_dia.isoformat(),
@@ -465,6 +526,7 @@ def get_semana(cedula: str, db: Session = Depends(get_db)):
             es_hoy=(fecha_dia == hoy_bog),
             registros=[RegistroJornadaOut.model_validate(r) for r in regs],
             tiempo_sede=tiempo_sede,
+            almuerzo_min=almuerzo_min,
         ))
 
     return SemanaResponse(dias=dias)
@@ -482,6 +544,82 @@ def list_sedes(db: Session = Depends(get_db)):
 
 
 # ── Endpoints admin ───────────────────────────────────────────────────────────
+
+class SalidaManualIn(BaseModel):
+    empleado_id: int
+    fecha: str   # "YYYY-MM-DD" en hora Bogotá
+    hora: str    # "HH:MM" en hora Bogotá
+    notas: str | None = None
+
+
+@router.post('/admin/registros/salida-manual', response_model=RegistroJornadaOut, status_code=status.HTTP_201_CREATED)
+def registrar_salida_manual(
+    body: SalidaManualIn,
+    db: Session = Depends(get_db),
+    _user=Depends(require_permissions('jornada:admin')),
+):
+    from app.models.empleado import Empleado
+
+    empleado = db.get(Empleado, body.empleado_id)
+    if not empleado:
+        raise HTTPException(status_code=404, detail='Empleado no encontrado')
+
+    # Parsear fecha+hora en Bogotá y convertir a UTC
+    try:
+        ts_bog = datetime.strptime(f'{body.fecha} {body.hora}', '%Y-%m-%d %H:%M')
+    except ValueError:
+        raise HTTPException(status_code=400, detail='Formato de fecha u hora inválido')
+
+    ts_utc = ts_bog - BOGOTA_OFFSET  # Bogotá = UTC-5, entonces +5 para UTC
+
+    hoy_bog = _bogota_now().date()
+    fecha_bog = ts_bog.date()
+
+    if fecha_bog >= hoy_bog:
+        raise HTTPException(status_code=400, detail='Solo se puede registrar salida manual en días anteriores al día de hoy')
+
+    # Rango del día en UTC
+    start_bog = datetime(fecha_bog.year, fecha_bog.month, fecha_bog.day)
+    start_utc = start_bog - BOGOTA_OFFSET
+    end_utc = start_utc + timedelta(days=1)
+
+    regs_dia = list(db.scalars(
+        select(RegistroJornada)
+        .where(
+            RegistroJornada.empleado_id == body.empleado_id,
+            RegistroJornada.timestamp >= start_utc,
+            RegistroJornada.timestamp < end_utc,
+        )
+        .order_by(RegistroJornada.timestamp)
+    ).all())
+
+    entradas = [r for r in regs_dia if r.tipo == 'entrada']
+    salidas  = [r for r in regs_dia if r.tipo == 'salida']
+
+    if not entradas:
+        raise HTTPException(status_code=400, detail='No hay registro de entrada ese día para este empleado')
+
+    if len(salidas) >= len(entradas):
+        raise HTTPException(status_code=400, detail='El empleado ya tiene salida registrada para ese día')
+
+    # La hora de salida debe ser posterior a la última entrada sin par
+    ultima_entrada_sin_par = entradas[len(salidas)]
+    if ts_utc <= ultima_entrada_sin_par.timestamp:
+        raise HTTPException(status_code=400, detail='La hora de salida debe ser posterior a la hora de entrada')
+
+    registro = RegistroJornada(
+        empleado_id=body.empleado_id,
+        tipo='salida',
+        timestamp=ts_utc,
+        sede=ultima_entrada_sin_par.sede,
+        notas=body.notas or 'Salida registrada manualmente por administrador',
+        foto_url=None,
+        is_manual=True,
+    )
+    db.add(registro)
+    db.commit()
+    db.refresh(registro)
+    return registro
 
 @router.post('/admin/sedes', response_model=SedeJornadaOut, status_code=status.HTTP_201_CREATED)
 def create_sede(
@@ -598,6 +736,7 @@ def get_asistencia(
     for r in records:
         records_by_emp[r.empleado_id].append(r)
 
+    horarios_dia = _horarios_por_nombre(db)
     empleados_out: list[EmpleadoAsistenciaOut] = []
     presentes = 0
     completos = 0
@@ -630,7 +769,11 @@ def get_asistencia(
 
         total_min: int | None = None
         if primer_entrada and ultima_salida:
-            total_min = int((ultima_salida.timestamp - primer_entrada.timestamp).total_seconds() / 60)
+            bruto = int((ultima_salida.timestamp - primer_entrada.timestamp).total_seconds() / 60)
+            sede_nombre = primer_entrada.sede
+            horario_cfg = horarios_dia.get(sede_nombre) if sede_nombre else None
+            almuerzo = _almuerzo_minutos(fecha, horario_cfg)
+            total_min = max(0, bruto - almuerzo)
 
         empleados_out.append(EmpleadoAsistenciaOut(
             empleado_id=emp.id, nombres=emp.nombres, apellidos=emp.apellidos,
@@ -738,6 +881,7 @@ def reporte_semanal(
         by_emp[r.empleado_id].append(r)
 
     hoy = _bogota_now().date()
+    horarios = _horarios_por_nombre(db)
     resultado: list[EmpleadoSemanaOut] = []
 
     for emp in empleados:
@@ -759,13 +903,19 @@ def reporte_semanal(
 
             # Sumar todos los pares entrada→salida cronológicos
             pares = min(len(entradas_ord), len(salidas_ord))
-            dia_min = sum(
-                max(0, int((salidas_ord[i].timestamp - entradas_ord[i].timestamp).total_seconds() // 60))
-                for i in range(pares)
+            bruto_min = sum(
+                max(0, int((salidas_ord[j].timestamp - entradas_ord[j].timestamp).total_seconds() // 60))
+                for j in range(pares)
             )
 
             tiempo_sede = None
+            almuerzo_min = 0
             if pares > 0:
+                # Descuento de almuerzo según sede del primer registro del día
+                sede_del_dia = regs[0].sede if regs else None
+                horario_cfg = horarios.get(sede_del_dia) if sede_del_dia else None
+                almuerzo_min = _almuerzo_minutos(fecha_dia, horario_cfg)
+                dia_min = max(0, bruto_min - almuerzo_min)
                 tiempo_sede = f"{dia_min // 60}h {dia_min % 60:02d}m"
                 total_min += dia_min
                 dias_asistidos += 1
@@ -778,6 +928,7 @@ def reporte_semanal(
                 es_hoy=(fecha_dia == hoy),
                 registros=[RegistroJornadaOut.model_validate(r) for r in regs],
                 tiempo_sede=tiempo_sede,
+                almuerzo_min=almuerzo_min,
             ))
 
         resultado.append(EmpleadoSemanaOut(

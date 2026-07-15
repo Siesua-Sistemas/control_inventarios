@@ -9,10 +9,12 @@ import { useAuth } from '@/components/auth-provider';
 import { ImageFile, ImageGallery } from '@/components/image-picker';
 import {
   ComentarioOut,
+  TicketAsignable,
   TicketOut,
   TicketUpdate,
   addComentario,
   isAuthenticated,
+  listTicketAsignables,
   listTickets,
   updateTicket,
   uploadImagenesTicket,
@@ -30,6 +32,14 @@ const ESTADOS: { value: string; label: string; color: string }[] = [
 ];
 
 const PRIORIDADES = ['Baja', 'Media', 'Alta', 'Crítica'];
+
+const DOMINIOS = ['IT', 'Bioingeniería', 'General'];
+
+const DOMINIO_COLOR: Record<string, string> = {
+  IT: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300',
+  'Bioingeniería': 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
+  General: 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300',
+};
 
 const PRIO_COLOR: Record<string, string> = {
   Baja: 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300',
@@ -62,13 +72,17 @@ export default function TicketsPage() {
   const [filterSede, setFilterSede] = useState('');
   const [filterEstado, setFilterEstado] = useState('');
   const [filterCat, setFilterCat] = useState('');
+  const [filterDominio, setFilterDominio] = useState('');
   const [filterDoc, setFilterDoc] = useState('');
 
   // Ticket management
   const [mgmtEstado, setMgmtEstado] = useState('');
   const [mgmtPrioridad, setMgmtPrioridad] = useState('');
+  const [mgmtDominio, setMgmtDominio] = useState('');
+  const [mgmtAsignado, setMgmtAsignado] = useState<number | null>(null);
   const [mgmtResolucion, setMgmtResolucion] = useState('');
   const [mgmtSaving, setMgmtSaving] = useState(false);
+  const [asignables, setAsignables] = useState<TicketAsignable[]>([]);
 
   // Comments
   const [comentario, setComentario] = useState('');
@@ -80,7 +94,7 @@ export default function TicketsPage() {
     if (!hasPermission('tickets:read')) { router.replace('/inicio'); return; }
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterSede, filterEstado, filterCat, filterDoc]);
+  }, [filterSede, filterEstado, filterCat, filterDominio, filterDoc]);
 
   async function load() {
     setLoading(true);
@@ -89,6 +103,7 @@ export default function TicketsPage() {
         sede: filterSede || undefined,
         estado: filterEstado || undefined,
         categoria: filterCat || undefined,
+        dominio: filterDominio || undefined,
         documento: filterDoc || undefined,
       });
       setTickets(data.items);
@@ -102,10 +117,26 @@ export default function TicketsPage() {
     setSelected(t);
     setMgmtEstado(t.estado);
     setMgmtPrioridad(t.prioridad);
+    setMgmtDominio(t.dominio);
     setMgmtResolucion(t.resolucion ?? '');
     setComentario('');
     setEsInterno(true);
+    // Cargar técnicos que atienden el dominio del ticket + preseleccionar el actual
+    listTicketAsignables(t.dominio)
+      .then((list) => {
+        setAsignables(list);
+        const actual = list.find((u) => u.full_name === t.asignado_a_nombre);
+        setMgmtAsignado(actual ? actual.id : null);
+      })
+      .catch(() => setAsignables([]));
   };
+
+  // Al reclasificar el dominio, recargar la lista de técnicos elegibles
+  useEffect(() => {
+    if (!selected || !mgmtDominio) return;
+    listTicketAsignables(mgmtDominio).then(setAsignables).catch(() => setAsignables([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mgmtDominio]);
 
   const handleSave = async () => {
     if (!selected) return;
@@ -114,9 +145,12 @@ export default function TicketsPage() {
       const body: TicketUpdate = {};
       if (mgmtEstado !== selected.estado) body.estado = mgmtEstado;
       if (mgmtPrioridad !== selected.prioridad) body.prioridad = mgmtPrioridad;
+      if (mgmtDominio !== selected.dominio) body.dominio = mgmtDominio;
       if (mgmtResolucion !== (selected.resolucion ?? '')) body.resolucion = mgmtResolucion;
+      body.asignado_a_id = mgmtAsignado;
       const updated = await updateTicket(selected.id, body);
       setSelected(updated);
+      setMgmtDominio(updated.dominio);
       setTickets((prev) => prev.map((t) => t.id === updated.id ? updated : t));
     } finally {
       setMgmtSaving(false);
@@ -159,6 +193,10 @@ export default function TicketsPage() {
             <option value="">Todas las categorías</option>
             {['Incidente', 'Solicitud', 'Consulta'].map((c) => <option key={c}>{c}</option>)}
           </select>
+          <select value={filterDominio} onChange={(e) => setFilterDominio(e.target.value)} className="w-40">
+            <option value="">Todas las áreas</option>
+            {DOMINIOS.map((d) => <option key={d} value={d}>{d}</option>)}
+          </select>
           <div className="relative">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400">
               <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
@@ -170,9 +208,9 @@ export default function TicketsPage() {
               className="w-48 pl-8"
             />
           </div>
-          {(filterSede || filterEstado || filterCat || filterDoc) && (
+          {(filterSede || filterEstado || filterCat || filterDominio || filterDoc) && (
             <button
-              onClick={() => { setFilterSede(''); setFilterEstado(''); setFilterCat(''); setFilterDoc(''); }}
+              onClick={() => { setFilterSede(''); setFilterEstado(''); setFilterCat(''); setFilterDominio(''); setFilterDoc(''); }}
               className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs text-slate-500 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
             >
               Limpiar filtros
@@ -188,6 +226,7 @@ export default function TicketsPage() {
                 <tr className="border-b border-slate-100 text-left text-xs font-medium uppercase tracking-wider text-slate-500 dark:border-slate-800 dark:text-slate-400">
                   <th className="px-4 py-3">Nro</th>
                   <th className="px-4 py-3">Empleado</th>
+                  <th className="px-4 py-3">Área</th>
                   <th className="px-4 py-3">Sede</th>
                   <th className="px-4 py-3">Asunto</th>
                   <th className="px-4 py-3">Prioridad</th>
@@ -197,9 +236,9 @@ export default function TicketsPage() {
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan={7} className="px-4 py-8 text-center text-slate-400">Cargando…</td></tr>
+                  <tr><td colSpan={8} className="px-4 py-8 text-center text-slate-400">Cargando…</td></tr>
                 ) : tickets.length === 0 ? (
-                  <tr><td colSpan={7} className="px-4 py-8 text-center text-slate-400">Sin tickets</td></tr>
+                  <tr><td colSpan={8} className="px-4 py-8 text-center text-slate-400">Sin tickets</td></tr>
                 ) : tickets.map((t) => (
                   <tr
                     key={t.id}
@@ -208,6 +247,9 @@ export default function TicketsPage() {
                   >
                     <td className="px-4 py-3 font-mono text-xs text-slate-500">{t.numero}</td>
                     <td className="px-4 py-3 font-medium">{t.empleado_nombre}</td>
+                    <td className="px-4 py-3">
+                      <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${DOMINIO_COLOR[t.dominio] ?? DOMINIO_COLOR.General}`}>{t.dominio}</span>
+                    </td>
                     <td className="px-4 py-3 text-slate-500">{t.sede}</td>
                     <td className="max-w-xs truncate px-4 py-3">{t.asunto}</td>
                     <td className="px-4 py-3">
@@ -244,8 +286,14 @@ export default function TicketsPage() {
                 <div className="flex flex-wrap gap-2 text-sm">
                   <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${estadoColor(selected.estado)}`}>{estadoLabel(selected.estado)}</span>
                   <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${PRIO_COLOR[selected.prioridad] ?? ''}`}>{selected.prioridad}</span>
+                  <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${DOMINIO_COLOR[selected.dominio] ?? DOMINIO_COLOR.General}`}>{selected.dominio}</span>
                   <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs dark:bg-slate-700">{selected.categoria}</span>
                   <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs dark:bg-slate-700">{selected.tipo_solicitud}</span>
+                  {selected.asignado_a_nombre && (
+                    <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-xs text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300">
+                      👤 {selected.asignado_a_nombre}
+                    </span>
+                  )}
                 </div>
 
                 {/* Descripción */}
@@ -357,7 +405,28 @@ export default function TicketsPage() {
                           {PRIORIDADES.map((p) => <option key={p}>{p}</option>)}
                         </select>
                       </div>
+                      <div>
+                        <label>Área</label>
+                        <select value={mgmtDominio} onChange={(e) => setMgmtDominio(e.target.value)}>
+                          {DOMINIOS.map((d) => <option key={d} value={d}>{d}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label>Asignar a</label>
+                        <select
+                          value={mgmtAsignado ?? ''}
+                          onChange={(e) => setMgmtAsignado(e.target.value ? Number(e.target.value) : null)}
+                        >
+                          <option value="">— Sin asignar —</option>
+                          {asignables.map((u) => <option key={u.id} value={u.id}>{u.full_name}</option>)}
+                        </select>
+                      </div>
                     </div>
+                    {asignables.length === 0 && (
+                      <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
+                        No hay técnicos que atiendan el área «{mgmtDominio}». Asigna un dominio con técnicos o revisa los roles.
+                      </p>
+                    )}
                     <div className="mt-3">
                       <label>Resolución</label>
                       <textarea

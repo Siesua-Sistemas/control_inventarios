@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.dependencies import require_permissions
+from app.dependencies import get_user_dominios, require_permissions
 from app.models.equipment import Equipment
 from app.models.equipment_documento import EquipmentDocumento
 from app.models.equipment_photo import EquipmentPhoto
@@ -58,9 +58,9 @@ def get_specs_template(tipo: str = Query(...), service: EquipmentTipoService = D
 @router.get('/tipos', response_model=EquipmentTipoListResponse)
 def list_tipos(
     service: EquipmentTipoService = Depends(_tipo_service),
-    _user=Depends(require_permissions()),
+    user=Depends(require_permissions()),
 ):
-    items = service.list_all()
+    items = service.list_all(dominios_permitidos=get_user_dominios(user))
     return {'total': len(items), 'items': items}
 
 
@@ -98,7 +98,7 @@ def list_proximos_preventivos(
     desde: date | None = Query(None),
     hasta: date | None = Query(None),
     db: Session = Depends(get_db),
-    _user=Depends(require_permissions('mantenimientos:read')),
+    user=Depends(require_permissions('mantenimientos:read')),
 ):
     from app.models.equipment_tipo import EquipmentTipo
     from app.repositories.mantenimiento_config_repository import MantenimientoConfigRepository
@@ -112,10 +112,13 @@ def list_proximos_preventivos(
         ).all()
     )
 
+    dominios_permitidos = get_user_dominios(user)
     filters = [
         Equipment.is_active.is_(True),
         Equipment.proximo_preventivo.isnot(None),
     ]
+    if dominios_permitidos is not None:
+        filters.append(Equipment.dominio.in_(dominios_permitidos))
     if perifericos:
         filters.append(Equipment.tipo.notin_(perifericos))
     if desde:
@@ -150,14 +153,17 @@ def list_calibraciones(
     vencidas: bool | None = Query(None),
     proximas_dias: int | None = Query(None, ge=1, le=365),
     db: Session = Depends(get_db),
-    _user=Depends(require_permissions('mantenimientos:read')),
+    user=Depends(require_permissions('mantenimientos:read')),
 ):
     from datetime import date as _date
     today = _date.today()
+    dominios_permitidos = get_user_dominios(user)
     filters = [
         Equipment.is_active.is_(True),
         Equipment.vencimiento_calibracion.isnot(None),
     ]
+    if dominios_permitidos is not None:
+        filters.append(Equipment.dominio.in_(dominios_permitidos))
     if vencidas is True:
         filters.append(Equipment.vencimiento_calibracion < today)
     elif vencidas is False:
@@ -196,12 +202,18 @@ def list_equipment(
     sede: str | None = Query(None),
     estado: str | None = Query(None),
     criticidad: str | None = Query(None),
+    dominio: str | None = Query(None),
     skip: int = Query(0, ge=0),
     limit: int | None = Query(None, ge=1, le=200),
     service: EquipmentService = Depends(_service),
-    _user=Depends(require_permissions('equipment:read')),
+    user=Depends(require_permissions('equipment:read')),
 ):
-    items, total = service.list_equipment(search, tipo, sede, estado, criticidad, skip, limit)
+    items, total = service.list_equipment(
+        search, tipo, sede, estado, criticidad,
+        dominio_filter=dominio,
+        dominios_permitidos=get_user_dominios(user),
+        skip=skip, limit=limit,
+    )
     return {'total': total, 'items': items}
 
 
@@ -212,10 +224,16 @@ def export_equipment(
     sede: str | None = Query(None),
     estado: str | None = Query(None),
     criticidad: str | None = Query(None),
+    dominio: str | None = Query(None),
     service: EquipmentService = Depends(_service),
-    _user=Depends(require_permissions('equipment:read', 'reports:export')),
+    user=Depends(require_permissions('equipment:read', 'reports:export')),
 ):
-    items, _ = service.list_equipment(search, tipo, sede, estado, criticidad, 0, None)
+    items, _ = service.list_equipment(
+        search, tipo, sede, estado, criticidad,
+        dominio_filter=dominio,
+        dominios_permitidos=get_user_dominios(user),
+        skip=0, limit=None,
+    )
     rows = [
         [
             eq.codigo_interno,

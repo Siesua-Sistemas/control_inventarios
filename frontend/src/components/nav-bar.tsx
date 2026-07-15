@@ -28,9 +28,9 @@ const NAV_ITEMS: NavItem[] = [
     { href: '/actas', label: 'Actas de entrega', permission: null },
   ]},
   { label: 'Mantenimiento', links: [
-    { href: '/mantenimientos', label: 'Dashboard', permission: 'mantenimientos:read' },
-    { href: '/mantenimientos/registros', label: 'Registros', permission: 'mantenimientos:read' },
+    { href: '/mantenimientos', label: 'Panel', permission: 'mantenimientos:read' },
     { href: '/mantenimientos/mi-dia', label: 'Mi agenda', permission: 'mantenimientos:read' },
+    { href: '/mantenimientos/registros', label: 'Órdenes de trabajo', permission: 'mantenimientos:read' },
     { href: '/mantenimientos/calendario', label: 'Calendario', permission: 'mantenimientos:read' },
     { href: '/mantenimientos/calibraciones', label: 'Calibraciones', permission: 'mantenimientos:read' },
     { href: '/mantenimientos/configuracion', label: 'Configuración', permission: 'mantenimientos:write' },

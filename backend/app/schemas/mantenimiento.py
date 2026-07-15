@@ -9,6 +9,7 @@ ESTADOS_MANTENIMIENTO = {
     'pendiente_aprobacion', 'aprobado', 'rechazado',
 }
 PRIORIDADES_MANTENIMIENTO = {'Urgente', 'Alta', 'Media', 'Baja'}
+TIPOS_CAMPO = {'checkbox', 'numero', 'texto', 'seleccion'}
 
 
 class PasoOut(BaseModel):
@@ -18,16 +19,30 @@ class PasoOut(BaseModel):
     descripcion: str
     completado: bool
     completado_en: datetime | None
+    tipo_campo: str = 'checkbox'
+    unidad: str | None = None
+    opciones: list[str] | None = None
+    valor_min: Decimal | None = None
+    valor_max: Decimal | None = None
+    obligatorio: bool = True
+    valor: str | None = None
 
 
 class PasoCreate(BaseModel):
     descripcion: str
     orden: int = 0
+    tipo_campo: str = 'checkbox'
+    unidad: str | None = None
+    opciones: list[str] | None = None
+    valor_min: Decimal | None = None
+    valor_max: Decimal | None = None
+    obligatorio: bool = True
 
 
 class PasoUpdate(BaseModel):
     completado: bool | None = None
     descripcion: str | None = None
+    valor: str | None = None
 
 
 class PlantillaPasoOut(BaseModel):
@@ -36,6 +51,12 @@ class PlantillaPasoOut(BaseModel):
     tipo_mantenimiento: str
     descripcion: str
     orden: int
+    tipo_campo: str = 'checkbox'
+    unidad: str | None = None
+    opciones: list[str] | None = None
+    valor_min: Decimal | None = None
+    valor_max: Decimal | None = None
+    obligatorio: bool = True
 
     model_config = {'from_attributes': True}
 
@@ -45,6 +66,12 @@ class PlantillaPasoCreate(BaseModel):
     tipo_mantenimiento: str
     descripcion: str
     orden: int = 0
+    tipo_campo: str = 'checkbox'
+    unidad: str | None = None
+    opciones: list[str] | None = None
+    valor_min: Decimal | None = None
+    valor_max: Decimal | None = None
+    obligatorio: bool = True
 
 
 class AprobacionCreate(BaseModel):
@@ -115,6 +142,8 @@ class MantenimientoOut(BaseModel):
     proximo_mantenimiento: date | None
     estado: str
     prioridad: str
+    iniciado_en: datetime | None = None
+    finalizado_en: datetime | None = None
     firma_tecnico: str | None
     firma_supervisor: str | None
     aprobado_por_nombre: str | None

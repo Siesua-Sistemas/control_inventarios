@@ -367,6 +367,7 @@ function PortalContent() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
+  const [dominio, setDominio] = useState('IT');
   const [categoria, setCategoria] = useState('Incidente');
   const [tipoSolicitud, setTipoSolicitud] = useState('Hardware');
   const [asunto, setAsunto] = useState('');
@@ -417,6 +418,7 @@ function PortalContent() {
     try {
       const result = await crearTicketPublico({
         documento,
+        dominio,
         categoria,
         tipo_solicitud: tipoSolicitud,
         asunto,
@@ -447,6 +449,19 @@ function PortalContent() {
     ...(data?.equipos_asignados ?? []).map((e) => ({ ...e, origen: 'Asignado' })),
     ...(data?.equipos_bodega ?? []).map((e) => ({ ...e, origen: e.bodega_nombre ?? 'Bodega' })),
   ];
+
+  // Filtrar por el área elegida: "General" muestra todo; los equipos "General" (o sin
+  // dominio, legado) son visibles en cualquier área.
+  const equiposFiltrados = allEquipos.filter((e) =>
+    dominio === 'General' || !e.dominio || e.dominio === 'General' || e.dominio === dominio
+  );
+
+  // Al cambiar de área, deseleccionar equipos que ya no correspondan.
+  useEffect(() => {
+    const visibles = new Set(equiposFiltrados.map((e) => e.id));
+    setSelectedEquipos((prev) => prev.filter((id) => visibles.has(id)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dominio, data]);
 
   // ── Step: input ─────────────────────────────────────────────────────────
 
@@ -548,6 +563,30 @@ function PortalContent() {
               <h2 className="font-semibold">Crear ticket de soporte</h2>
             </div>
             <form onSubmit={handleTicket} className="space-y-4">
+              <div>
+                <label className="mb-1.5 block text-sm font-medium">¿A qué área corresponde?</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { value: 'IT', label: 'IT / Sistemas', desc: 'Computadores, red, software' },
+                    { value: 'Bioingeniería', label: 'Bioingeniería', desc: 'Equipos biomédicos' },
+                    { value: 'General', label: 'General', desc: 'Otro / no estoy seguro' },
+                  ].map((op) => (
+                    <button
+                      key={op.value}
+                      type="button"
+                      onClick={() => setDominio(op.value)}
+                      className={`rounded-lg border px-3 py-2 text-left transition-colors ${
+                        dominio === op.value
+                          ? 'border-cyan-500 bg-cyan-50 dark:border-cyan-400 dark:bg-cyan-900/20'
+                          : 'border-slate-200 hover:border-slate-300 dark:border-slate-700 dark:hover:border-slate-600'
+                      }`}
+                    >
+                      <span className="block text-sm font-medium">{op.label}</span>
+                      <span className="block text-xs text-slate-500 dark:text-slate-400">{op.desc}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
               <div className="grid grid-cols-3 gap-3">
                 <div>
                   <label htmlFor="cat">Categoría</label>
@@ -576,11 +615,13 @@ function PortalContent() {
                 <label htmlFor="desc">Descripción detallada</label>
                 <textarea id="desc" value={descripcion} onChange={(e) => setDescripcion(e.target.value)} rows={4} placeholder="Describe con detalle el problema: qué ocurre, desde cuándo, qué has intentado…" required className="w-full" />
               </div>
-              {allEquipos.length > 0 && (
-                <div>
-                  <label className="mb-1 block text-sm font-medium">Equipos relacionados <span className="font-normal text-slate-500">(opcional)</span></label>
+              <div>
+                <label className="mb-1 block text-sm font-medium">
+                  Equipos relacionados <span className="font-normal text-slate-500">(opcional)</span>
+                </label>
+                {equiposFiltrados.length > 0 ? (
                   <div className="grid gap-1 rounded-lg border border-slate-200 bg-slate-50 p-3 sm:grid-cols-2 dark:border-slate-700 dark:bg-slate-800">
-                    {allEquipos.map((eq) => (
+                    {equiposFiltrados.map((eq) => (
                       <label key={eq.id} className="flex cursor-pointer items-center gap-2 text-sm">
                         <input type="checkbox" checked={selectedEquipos.includes(eq.id)} onChange={() => toggleEquipo(eq.id)} className="h-4 w-4 rounded border-slate-300" />
                         <span className="font-mono text-xs text-slate-500">{eq.codigo_interno}</span>
@@ -589,8 +630,12 @@ function PortalContent() {
                       </label>
                     ))}
                   </div>
-                </div>
-              )}
+                ) : (
+                  <p className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-3 text-xs text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400">
+                    No hay equipos de «{dominio}» asociados a tu sede. Puedes enviar el ticket sin equipo o cambiar el área.
+                  </p>
+                )}
+              </div>
               {/* Imágenes adjuntas */}
               <div>
                 <label className="mb-1 block text-sm font-medium">

@@ -9,8 +9,14 @@ class BodegaRepository:
     def __init__(self, db: Session):
         self.db = db
 
-    def list_bodegas(self, sede: str | None = None) -> list[Bodega]:
+    def list_bodegas(
+        self,
+        sede: str | None = None,
+        dominios_permitidos: list[str] | None = None,
+    ) -> list[Bodega]:
         query = select(Bodega).where(Bodega.is_active.is_(True))
+        if dominios_permitidos is not None:
+            query = query.where(Bodega.dominio.in_(dominios_permitidos))
         if sede:
             query = query.where(Bodega.sede.ilike(f'%{sede}%'))
         return list(self.db.scalars(query.order_by(Bodega.nombre.asc())).all())
@@ -20,24 +26,31 @@ class BodegaRepository:
             select(Bodega).where(Bodega.id == bodega_id, Bodega.is_active.is_(True))
         )
 
-    def count_equipos(self, bodega_id: int) -> int:
+    def count_equipos(self, bodega_id: int, dominios_permitidos: list[str] | None = None) -> int:
         bodega = self.get_by_id(bodega_id)
         if not bodega:
             return 0
-        filters = [Equipment.sede == bodega.sede, Equipment.is_active.is_(True)]
-        return self.db.scalar(select(func.count()).where(*filters)) or 0
+        query = select(func.count()).where(
+            Equipment.sede == bodega.sede,
+            Equipment.is_active.is_(True),
+        )
+        if dominios_permitidos is not None:
+            query = query.where(Equipment.dominio.in_(dominios_permitidos))
+        return self.db.scalar(query) or 0
 
-    def get_equipos(self, bodega_id: int) -> list[Equipment]:
+    def get_equipos(
+        self, bodega_id: int, dominios_permitidos: list[str] | None = None
+    ) -> list[Equipment]:
         bodega = self.get_by_id(bodega_id)
         if not bodega:
             return []
-        return list(
-            self.db.scalars(
-                select(Equipment)
-                .where(Equipment.sede == bodega.sede, Equipment.is_active.is_(True))
-                .order_by(Equipment.tipo, Equipment.marca)
-            ).all()
+        query = (
+            select(Equipment)
+            .where(Equipment.sede == bodega.sede, Equipment.is_active.is_(True))
         )
+        if dominios_permitidos is not None:
+            query = query.where(Equipment.dominio.in_(dominios_permitidos))
+        return list(self.db.scalars(query.order_by(Equipment.tipo, Equipment.marca)).all())
 
     def create(self, bodega: Bodega) -> Bodega:
         self.db.add(bodega)

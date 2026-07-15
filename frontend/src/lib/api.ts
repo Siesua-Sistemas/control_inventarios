@@ -186,6 +186,7 @@ export interface EquipmentRow {
   ubicacion: string | null;
   estado: string;
   criticidad: string;
+  dominio: string;
   specs: Record<string, unknown> | null;
   fecha_compra: string | null;
   valor: string | null;
@@ -216,6 +217,7 @@ export interface EquipmentFilters {
   sede?: string;
   estado?: string;
   criticidad?: string;
+  dominio?: string;
   skip?: number;
   limit?: number;
 }
@@ -227,6 +229,7 @@ export async function listEquipment(filters: EquipmentFilters = {}): Promise<Equ
   if (filters.sede) params.set('sede', filters.sede);
   if (filters.estado) params.set('estado', filters.estado);
   if (filters.criticidad) params.set('criticidad', filters.criticidad);
+  if (filters.dominio) params.set('dominio', filters.dominio);
   if (filters.skip) params.set('skip', String(filters.skip));
   if (filters.limit) params.set('limit', String(filters.limit));
   const query = params.toString() ? `?${params.toString()}` : '';
@@ -240,6 +243,7 @@ export async function exportEquiposCsv(filters: Omit<EquipmentFilters, 'skip' | 
   if (filters.sede) params.set('sede', filters.sede);
   if (filters.estado) params.set('estado', filters.estado);
   if (filters.criticidad) params.set('criticidad', filters.criticidad);
+  if (filters.dominio) params.set('dominio', filters.dominio);
   const query = params.toString() ? `?${params.toString()}` : '';
   await downloadFile(`/api/v1/equipos/export${query}`, 'inventario_equipos.csv');
 }
@@ -278,6 +282,7 @@ export interface BodegaRow {
   sede: string;
   responsable: string | null;
   descripcion: string | null;
+  dominio: string;
   total_equipos: number;
   is_active: boolean;
   created_at: string;
@@ -304,6 +309,10 @@ export async function createBodega(data: Omit<BodegaRow, 'id' | 'total_equipos' 
 
 export async function getBodegaInventario(id: number): Promise<BodegaInventario> {
   return apiRequest(`/api/v1/bodegas/${id}/inventario`);
+}
+
+export async function updateBodega(id: number, data: Partial<Pick<BodegaRow, 'nombre' | 'sede' | 'responsable' | 'descripcion' | 'dominio'>>): Promise<BodegaRow> {
+  return apiRequest(`/api/v1/bodegas/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
 }
 
 export async function deleteBodega(id: number): Promise<void> {
@@ -390,7 +399,7 @@ export async function entregar(data: { equipment_id: number; empleado_id: number
   return apiRequest('/api/v1/asignaciones/entregar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
 }
 
-export async function entregarMultiple(data: { equipment_ids: number[]; empleado_id: number; bodega_origen_id?: number; observaciones?: string }): Promise<AsignacionRow[]> {
+export async function entregarMultiple(data: { equipment_ids: number[]; empleado_id?: number; bodega_origen_id?: number; sede_destino?: string; responsable_nombre?: string; observaciones?: string }): Promise<AsignacionRow[]> {
   return apiRequest('/api/v1/asignaciones/entregar-multiple', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
 }
 
@@ -443,6 +452,7 @@ export interface SpecField {
 export interface EquipmentTipo {
   id: number;
   nombre: string;
+  dominio: string;
   es_periferico: boolean;
   activo: boolean;
   orden: number;
@@ -453,6 +463,7 @@ export interface EquipmentTipo {
 
 export interface EquipmentTipoPayload {
   nombre: string;
+  dominio?: string;
   es_periferico?: boolean;
   activo?: boolean;
   orden?: number;
@@ -686,6 +697,8 @@ export interface MantenimientoPhotoOut {
   created_at: string;
 }
 
+export type TipoCampoPaso = 'checkbox' | 'numero' | 'texto' | 'seleccion';
+
 export interface PasoRow {
   id: number;
   mantenimiento_id: number;
@@ -693,6 +706,13 @@ export interface PasoRow {
   descripcion: string;
   completado: boolean;
   completado_en: string | null;
+  tipo_campo: TipoCampoPaso;
+  unidad: string | null;
+  opciones: string[] | null;
+  valor_min: string | null;
+  valor_max: string | null;
+  obligatorio: boolean;
+  valor: string | null;
 }
 
 export interface PlantillaPasoRow {
@@ -701,6 +721,12 @@ export interface PlantillaPasoRow {
   tipo_mantenimiento: string;
   descripcion: string;
   orden: number;
+  tipo_campo: TipoCampoPaso;
+  unidad: string | null;
+  opciones: string[] | null;
+  valor_min: string | null;
+  valor_max: string | null;
+  obligatorio: boolean;
 }
 
 export interface MantenimientoRow {
@@ -848,7 +874,7 @@ export async function addPaso(mantenimientoId: number, descripcion: string, orde
   });
 }
 
-export async function updatePaso(mantenimientoId: number, pasoId: number, data: { completado?: boolean; descripcion?: string }): Promise<PasoRow> {
+export async function updatePaso(mantenimientoId: number, pasoId: number, data: { completado?: boolean; descripcion?: string; valor?: string }): Promise<PasoRow> {
   return apiRequest<PasoRow>(`/api/v1/mantenimientos/${mantenimientoId}/pasos/${pasoId}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
@@ -903,7 +929,18 @@ export async function listPlantillas(filters: { tipo_equipo?: string; tipo_mante
   return apiRequest<PlantillaPasoRow[]>(`/api/v1/mantenimientos/plantillas${qs ? '?' + qs : ''}`);
 }
 
-export async function createPlantilla(data: { tipo_equipo: string; tipo_mantenimiento: string; descripcion: string; orden?: number }): Promise<PlantillaPasoRow> {
+export async function createPlantilla(data: {
+  tipo_equipo: string;
+  tipo_mantenimiento: string;
+  descripcion: string;
+  orden?: number;
+  tipo_campo?: TipoCampoPaso;
+  unidad?: string | null;
+  opciones?: string[] | null;
+  valor_min?: number | null;
+  valor_max?: number | null;
+  obligatorio?: boolean;
+}): Promise<PlantillaPasoRow> {
   return apiRequest<PlantillaPasoRow>('/api/v1/mantenimientos/plantillas', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -1284,6 +1321,7 @@ export interface EquipoBrief {
   marca: string;
   modelo: string;
   estado: string;
+  dominio?: string | null;
   bodega_nombre: string | null;
 }
 
@@ -1296,6 +1334,7 @@ export interface VerificarResponse {
 
 export interface TicketPublicoCreate {
   documento: string;
+  dominio: string;
   categoria: string;
   tipo_solicitud: string;
   asunto: string;
@@ -1316,6 +1355,7 @@ export interface TicketPortalOut {
   id: number;
   numero: string;
   asunto: string;
+  dominio: string;
   categoria: string;
   tipo_solicitud: string;
   estado: string;
@@ -1342,6 +1382,7 @@ export interface TicketPortalDetailOut {
   numero: string;
   asunto: string;
   descripcion: string;
+  dominio: string;
   categoria: string;
   tipo_solicitud: string;
   estado: string;
@@ -1516,6 +1557,7 @@ export interface TicketOut {
   documento_identidad: string;
   empleado_nombre: string;
   sede: string;
+  dominio: string;
   categoria: string;
   tipo_solicitud: string;
   asunto: string;
@@ -1534,20 +1576,32 @@ export interface TicketOut {
 export interface TicketUpdate {
   estado?: string;
   prioridad?: string;
+  dominio?: string;
   asignado_a_id?: number | null;
   resolucion?: string;
 }
 
-export async function listTickets(filters: { sede?: string; estado?: string; categoria?: string; documento?: string; skip?: number; limit?: number } = {}): Promise<{ items: TicketOut[]; total: number }> {
+export interface TicketAsignable {
+  id: number;
+  full_name: string;
+}
+
+export async function listTickets(filters: { sede?: string; estado?: string; categoria?: string; dominio?: string; documento?: string; skip?: number; limit?: number } = {}): Promise<{ items: TicketOut[]; total: number }> {
   const p = new URLSearchParams();
   if (filters.sede) p.set('sede', filters.sede);
   if (filters.estado) p.set('estado', filters.estado);
   if (filters.categoria) p.set('categoria', filters.categoria);
+  if (filters.dominio) p.set('dominio', filters.dominio);
   if (filters.documento) p.set('documento', filters.documento);
   if (filters.skip) p.set('skip', String(filters.skip));
   if (filters.limit) p.set('limit', String(filters.limit));
   const qs = p.toString();
   return apiRequest(`/api/v1/tickets${qs ? '?' + qs : ''}`);
+}
+
+export async function listTicketAsignables(dominio?: string): Promise<TicketAsignable[]> {
+  const qs = dominio ? `?dominio=${encodeURIComponent(dominio)}` : '';
+  return apiRequest<TicketAsignable[]>(`/api/v1/tickets/asignables${qs}`);
 }
 
 export async function updateTicket(id: number, data: TicketUpdate): Promise<TicketOut> {
@@ -1579,6 +1633,7 @@ export interface RegistroJornadaOut {
   longitud: number | null;
   ip_publica: string | null;
   dispositivo: string | null;
+  is_manual: boolean;
 }
 
 export interface SedeInfoOut {
@@ -1664,6 +1719,7 @@ export interface DiaRegistros {
   es_hoy: boolean;
   registros: RegistroJornadaOut[];
   tiempo_sede: string | null;
+  almuerzo_min: number;
 }
 
 export interface SemanaJornadaResponse {
@@ -1704,6 +1760,14 @@ export async function getReporteSemanal(fecha?: string, sedeId?: number): Promis
 
 // ── Sedes Jornada (admin) ─────────────────────────────────────────────────────
 
+export interface HorarioConfig {
+  tipo: 'turno_unico' | 'doble_turno';
+  almuerzo_semana_min: number;   // minutos Lun–Vie
+  almuerzo_sabado_min: number;
+  almuerzo_domingo_min: number;
+  domingo_regla: 'ultimo_mes' | 'si_trabaja';
+}
+
 export interface SedeJornadaOut {
   id: number;
   nombre: string;
@@ -1716,6 +1780,7 @@ export interface SedeJornadaOut {
   tipo: 'empresa' | 'home_office';
   is_active: boolean;
   bodegas: { id: number; nombre: string }[];
+  horario_config: HorarioConfig | null;
 }
 
 export interface SedeJornadaCreate {
@@ -1728,6 +1793,7 @@ export interface SedeJornadaCreate {
   ip_autorizada?: string;
   tipo: 'empresa' | 'home_office';
   bodega_ids: number[];
+  horario_config?: HorarioConfig | null;
 }
 
 export async function getSedesJornada(): Promise<SedeJornadaOut[]> {
@@ -1754,6 +1820,19 @@ export async function updateSedeJornada(id: number, data: Partial<SedeJornadaCre
 
 export async function deleteSedeJornada(id: number): Promise<void> {
   return apiRequest<void>(`/api/v1/jornada/admin/sedes/${id}`, { method: 'DELETE' });
+}
+
+export async function registrarSalidaManual(
+  empleadoId: number,
+  fecha: string,
+  hora: string,
+  notas?: string,
+): Promise<RegistroJornadaOut> {
+  return apiRequest<RegistroJornadaOut>('/api/v1/jornada/admin/registros/salida-manual', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ empleado_id: empleadoId, fecha, hora, notas }),
+  });
 }
 
 export async function registrarJornada(

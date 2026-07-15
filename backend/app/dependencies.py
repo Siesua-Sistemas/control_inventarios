@@ -10,6 +10,21 @@ from app.security import decode_access_token
 
 security = HTTPBearer()
 
+DOMINIOS_DISPONIBLES = ['IT', 'Bioingeniería', 'General']
+
+
+def get_user_dominios(user: User) -> list[str] | None:
+    """Retorna los dominios visibles para el usuario.
+    None significa sin restricción (superusuario).
+    """
+    if user.is_superuser:
+        return None  # ve todo
+    dominios: set[str] = set()
+    for role in user.roles:
+        for d in (role.dominios or ['IT']):
+            dominios.add(d)
+    return list(dominios) if dominios else ['IT']
+
 
 def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),

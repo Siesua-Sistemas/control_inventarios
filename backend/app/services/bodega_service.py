@@ -11,12 +11,16 @@ class BodegaService:
     def __init__(self, repository: BodegaRepository):
         self.repository = repository
 
-    def list_bodegas(self, sede: str | None) -> list[BodegaOut]:
-        bodegas = self.repository.list_bodegas(sede)
+    def list_bodegas(
+        self,
+        sede: str | None,
+        dominios_permitidos: list[str] | None = None,
+    ) -> list[BodegaOut]:
+        bodegas = self.repository.list_bodegas(sede, dominios_permitidos)
         return [
             BodegaOut(
-                **{k: getattr(b, k) for k in ('id', 'nombre', 'sede', 'responsable', 'descripcion', 'is_active', 'created_at')},
-                total_equipos=self.repository.count_equipos(b.id),
+                **{k: getattr(b, k) for k in ('id', 'nombre', 'sede', 'responsable', 'descripcion', 'dominio', 'is_active', 'created_at')},
+                total_equipos=self.repository.count_equipos(b.id, dominios_permitidos),
             )
             for b in bodegas
         ]
@@ -27,9 +31,9 @@ class BodegaService:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Bodega no encontrada')
         return bodega
 
-    def get_inventario(self, bodega_id: int) -> dict:
+    def get_inventario(self, bodega_id: int, dominios_permitidos: list[str] | None = None) -> dict:
         bodega = self.get_bodega(bodega_id)
-        equipos = self.repository.get_equipos(bodega_id)
+        equipos = self.repository.get_equipos(bodega_id, dominios_permitidos)
         por_tipo: dict[str, int] = {}
         por_estado: dict[str, int] = {}
         for e in equipos:
@@ -37,7 +41,7 @@ class BodegaService:
             por_estado[e.estado] = por_estado.get(e.estado, 0) + 1
         return {
             'bodega': BodegaOut(
-                **{k: getattr(bodega, k) for k in ('id', 'nombre', 'sede', 'responsable', 'descripcion', 'is_active', 'created_at')},
+                **{k: getattr(bodega, k) for k in ('id', 'nombre', 'sede', 'responsable', 'descripcion', 'dominio', 'is_active', 'created_at')},
                 total_equipos=len(equipos),
             ),
             'total': len(equipos),
@@ -52,6 +56,7 @@ class BodegaService:
             sede=payload.sede.strip(),
             responsable=payload.responsable.strip() if payload.responsable else None,
             descripcion=payload.descripcion.strip() if payload.descripcion else None,
+            dominio=payload.dominio,
         )
         return self.repository.create(bodega)
 
