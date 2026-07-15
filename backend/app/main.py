@@ -220,6 +220,9 @@ def _run_migrations() -> None:
         conn.execute(text(
             'ALTER TABLE empleados ADD COLUMN IF NOT EXISTS en_jornada BOOLEAN NOT NULL DEFAULT FALSE'
         ))
+        conn.execute(text(
+            'ALTER TABLE empleados ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE'
+        ))
         conn.execute(text("""
             CREATE TABLE IF NOT EXISTS empleado_sedes_jornada (
                 empleado_id INTEGER NOT NULL REFERENCES empleados(id) ON DELETE CASCADE,
