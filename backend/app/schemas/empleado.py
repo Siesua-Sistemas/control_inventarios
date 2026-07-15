@@ -55,6 +55,20 @@ class EmpleadoOut(BaseModel):
         return cls(**data)
 
 
+class EmpleadoEstadoUpdate(BaseModel):
+    is_active: bool
+
+
+class EquipoAsignadoOut(BaseModel):
+    id: int
+    nombre: str
+    serial: str | None
+    tipo: str | None
+    estado: str
+
+    model_config = {'from_attributes': True}
+
+
 class EmpleadoListResponse(BaseModel):
     total: int
     items: list[EmpleadoOut]

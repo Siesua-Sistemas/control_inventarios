@@ -14,14 +14,16 @@ class EmpleadoRepository:
         sede: str | None = None,
         skip: int = 0,
         limit: int | None = None,
+        include_inactive: bool = False,
     ) -> tuple[list[Empleado], int]:
         query = (
             select(Empleado)
             .options(selectinload(Empleado.sedes_jornada))
-            .where(Empleado.is_active.is_(True))
         )
+        if not include_inactive:
+            query = query.where(Empleado.is_active.is_(True))
         if search:
-            term = f'%{search}%'
+            term = f'%{search.strip()}%'
             query = query.where(
                 or_(
                     Empleado.nombres.ilike(term),
@@ -39,12 +41,15 @@ class EmpleadoRepository:
         items = list(self.db.scalars(query).all())
         return items, total
 
-    def get_by_id(self, empleado_id: int) -> Empleado | None:
-        return self.db.scalar(
+    def get_by_id(self, empleado_id: int, include_inactive: bool = False) -> Empleado | None:
+        q = (
             select(Empleado)
             .options(selectinload(Empleado.sedes_jornada))
-            .where(Empleado.id == empleado_id, Empleado.is_active.is_(True))
+            .where(Empleado.id == empleado_id)
         )
+        if not include_inactive:
+            q = q.where(Empleado.is_active.is_(True))
+        return self.db.scalar(q)
 
     def get_by_cedula(self, cedula: str) -> Empleado | None:
         return self.db.scalar(select(Empleado).where(Empleado.cedula == cedula))
@@ -65,3 +70,20 @@ class EmpleadoRepository:
         empleado.is_active = False
         self.db.add(empleado)
         self.db.commit()
+
+    def set_estado(self, empleado: Empleado, is_active: bool) -> Empleado:
+        from datetime import datetime
+        empleado.is_active = is_active
+        if not is_active:
+            empleado.en_jornada = False
+        empleado.updated_at = datetime.utcnow()
+        self.db.add(empleado)
+        self.db.commit()
+        self.db.refresh(empleado)
+        return empleado
+
+    def get_equipos_actuales(self, empleado_id: int) -> list:
+        from app.models.equipment import Equipment
+        return list(self.db.scalars(
+            select(Equipment).where(Equipment.empleado_id == empleado_id)
+        ).all())

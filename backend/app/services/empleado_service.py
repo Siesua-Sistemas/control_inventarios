@@ -6,7 +6,7 @@ from sqlalchemy import select
 from app.models.empleado import Empleado
 from app.models.sede_jornada import SedeJornada
 from app.repositories.empleado_repository import EmpleadoRepository
-from app.schemas.empleado import EmpleadoCreate, EmpleadoOut, EmpleadoUpdate
+from app.schemas.empleado import EmpleadoCreate, EmpleadoOut, EmpleadoUpdate, EquipoAsignadoOut
 
 _JORNADA_FIELDS = {'en_jornada', 'sedes_jornada_ids'}
 
@@ -49,12 +49,13 @@ class EmpleadoService:
         sede: str | None,
         skip: int = 0,
         limit: int | None = None,
+        include_inactive: bool = False,
     ) -> tuple[list[EmpleadoOut], int]:
-        items, total = self.repository.list_empleados(search, sede, skip, limit)
+        items, total = self.repository.list_empleados(search, sede, skip, limit, include_inactive)
         return [_to_out(e) for e in items], total
 
-    def get_empleado(self, empleado_id: int) -> Empleado:
-        emp = self.repository.get_by_id(empleado_id)
+    def get_empleado(self, empleado_id: int, include_inactive: bool = False) -> Empleado:
+        emp = self.repository.get_by_id(empleado_id, include_inactive)
         if not emp:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Empleado no encontrado')
         return emp
@@ -102,6 +103,25 @@ class EmpleadoService:
 
         emp.updated_at = datetime.utcnow()
         return _to_out(self.repository.update(emp))
+
+    def toggle_estado(self, empleado_id: int, is_active: bool) -> EmpleadoOut:
+        emp = self.get_empleado(empleado_id, include_inactive=True)
+        updated = self.repository.set_estado(emp, is_active)
+        return _to_out(updated)
+
+    def get_equipos_actuales(self, empleado_id: int) -> list[EquipoAsignadoOut]:
+        self.get_empleado(empleado_id, include_inactive=True)
+        equipos = self.repository.get_equipos_actuales(empleado_id)
+        return [
+            EquipoAsignadoOut(
+                id=e.id,
+                nombre=f"{e.tipo} {e.marca} {e.modelo}".strip(),
+                serial=e.serial,
+                tipo=e.tipo,
+                estado=e.estado,
+            )
+            for e in equipos
+        ]
 
     def delete_empleado(self, empleado_id: int) -> None:
         emp = self.get_empleado(empleado_id)

@@ -175,12 +175,20 @@ def _sync_empleados(
     from app.models.sede_jornada import SedeJornada
 
     # Pre-cargar todos los mappings de empleados existentes
-    existing_emp_mappings: dict[str, int] = {
-        m.ext_id: m.internal_id
-        for m in db.query(SiesuaMapping).filter_by(tipo='empleado').all()
-    }
+    all_mappings = db.query(SiesuaMapping).filter_by(tipo='empleado').all()
+    existing_emp_mappings: dict[str, int] = {m.ext_id: m.internal_id for m in all_mappings}
 
     now = datetime.now(timezone.utc).replace(tzinfo=None)
+    active_ext_ids = {str(row['Id']) for row in rows}
+
+    # Desactivar empleados que ya no están activos en SIESUA (fin de temporada)
+    for ext_id, internal_id in existing_emp_mappings.items():
+        if ext_id not in active_ext_ids:
+            emp_inact = db.query(Empleado).filter_by(id=internal_id).first()
+            if emp_inact and emp_inact.is_active:
+                emp_inact.is_active = False
+                emp_inact.en_jornada = False
+                result.empleados_actualizados += 1
 
     for row in rows:
         ext_id = str(row['Id'])

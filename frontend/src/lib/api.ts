@@ -343,6 +343,15 @@ export interface EmpleadoFilters {
   sede?: string;
   skip?: number;
   limit?: number;
+  include_inactive?: boolean;
+}
+
+export interface EquipoAsignadoOut {
+  id: number;
+  nombre: string;
+  serial: string | null;
+  tipo: string | null;
+  estado: string;
 }
 
 export async function listEmpleados(filters: EmpleadoFilters = {}): Promise<{ total: number; items: EmpleadoRow[] }> {
@@ -351,6 +360,7 @@ export async function listEmpleados(filters: EmpleadoFilters = {}): Promise<{ to
   if (filters.sede) p.set('sede', filters.sede);
   if (filters.skip) p.set('skip', String(filters.skip));
   if (filters.limit) p.set('limit', String(filters.limit));
+  if (filters.include_inactive) p.set('include_inactive', 'true');
   return apiRequest(`/api/v1/empleados${p.toString() ? '?' + p.toString() : ''}`);
 }
 
@@ -359,11 +369,23 @@ export async function createEmpleado(data: Omit<EmpleadoRow, 'id' | 'nombre_comp
 }
 
 export async function getEmpleado(id: number): Promise<EmpleadoRow> {
-  return apiRequest(`/api/v1/empleados/${id}`);
+  return apiRequest(`/api/v1/empleados/${id}?include_inactive=true`);
 }
 
 export async function updateEmpleado(id: number, data: Omit<EmpleadoRow, 'id' | 'nombre_completo' | 'is_active' | 'created_at'>): Promise<EmpleadoRow> {
   return apiRequest(`/api/v1/empleados/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+}
+
+export async function toggleEmpleadoEstado(id: number, is_active: boolean): Promise<EmpleadoRow> {
+  return apiRequest(`/api/v1/empleados/${id}/estado`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ is_active }),
+  });
+}
+
+export async function getEmpleadoEquipos(id: number): Promise<EquipoAsignadoOut[]> {
+  return apiRequest(`/api/v1/empleados/${id}/equipos-actuales`);
 }
 
 export async function deleteEmpleado(id: number): Promise<void> {
