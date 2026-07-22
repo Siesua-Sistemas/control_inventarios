@@ -32,6 +32,7 @@ const HOME_DASHBOARD_OPTIONS = [
   { value: 'inventario', label: 'Inventarios (Compras)' },
   { value: 'entregas', label: 'Entregas (Administrativo)' },
   { value: 'tecnico', label: 'Técnico (Mantenimiento)' },
+  { value: 'gestion_humana', label: 'Gestión Humana (Asistencia)' },
 ];
 
 const DOMINIOS_DISPONIBLES = [

@@ -2,7 +2,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, EmailStr, field_validator
 
-DASHBOARDS_VALIDOS = {'general', 'inventario', 'entregas', 'tecnico'}
+DASHBOARDS_VALIDOS = {'general', 'inventario', 'entregas', 'tecnico', 'gestion_humana'}
 DOMINIOS_VALIDOS = {'IT', 'Bioingeniería', 'General'}
 
 

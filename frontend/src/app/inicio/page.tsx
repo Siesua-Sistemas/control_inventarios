@@ -10,6 +10,7 @@ import { isAuthenticated } from '@/lib/api';
 import { AgendaContent } from './_components/agenda-content';
 import { EntregasDashboardContent } from './_components/entregas-dashboard';
 import { GeneralDashboardContent } from './_components/general-dashboard';
+import { GestionHumanaDashboardContent } from './_components/gestion-humana-dashboard';
 import { InventarioDashboardContent } from './_components/inventario-dashboard';
 
 const HEADERS: Record<string, { title: string }> = {
@@ -17,6 +18,7 @@ const HEADERS: Record<string, { title: string }> = {
   inventario: { title: 'Inventario y compras' },
   entregas: { title: 'Entregas y movimientos' },
   tecnico: { title: 'Mi agenda' },
+  gestion_humana: { title: 'Gestión Humana' },
 };
 
 export default function InicioPage() {
@@ -47,6 +49,8 @@ export default function InicioPage() {
           <InventarioDashboardContent />
         ) : dashboard === 'entregas' ? (
           <EntregasDashboardContent />
+        ) : dashboard === 'gestion_humana' ? (
+          <GestionHumanaDashboardContent />
         ) : (
           <GeneralDashboardContent />
         )}
