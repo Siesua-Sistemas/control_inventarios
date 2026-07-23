@@ -28,3 +28,6 @@ Thumbs.db
 
 # Sensitive
 .history
+backend/seed_*.py
+backend/storage/
+.env Hostinger
