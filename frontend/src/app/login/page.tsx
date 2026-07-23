@@ -13,7 +13,7 @@ export default function LoginPage() {
   const { login } = useAuth();
   const [tab, setTab] = useState<Tab>('sistema');
 
-  const [email, setEmail] = useState('sistemas@siesua.com');
+  const [email, setEmail] = useState('@siesua.com');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);

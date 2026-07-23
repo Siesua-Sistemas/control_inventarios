@@ -197,7 +197,7 @@ export function NavBar() {
           onClick={() => setOpen(false)}
         >
           <span className="text-xs">◈</span>
-          <span>Inventario</span>
+          <span>SIECON</span>
         </Link>
 
         {/* Desktop links */}

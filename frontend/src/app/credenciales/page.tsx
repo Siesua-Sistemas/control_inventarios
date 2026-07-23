@@ -245,7 +245,7 @@ export default function CredencialesPage() {
       <main className="mx-auto max-w-7xl px-4 py-8">
         <div className="mb-8 flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="text-sm uppercase tracking-[0.3em] text-cyan-700 dark:text-cyan-300">Sistema de inventario</p>
+            <p className="text-sm uppercase tracking-[0.3em] text-cyan-700 dark:text-cyan-300">Sistemario</p>
             <h1 className="mt-1 text-3xl font-bold">Credenciales</h1>
             <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
               Claves de cuentas, aplicaciones y accesos de equipos.
