@@ -510,7 +510,9 @@ function JornadaContent() {
     : calcGeovalla(gpsEstado, coords, sedesParaGeo);
   const geovallaEstado = geoResult.estado;
   const sedeActual = geoResult.sedeActual;
-  const bloqueado = isEntrada && !ipOk && geovallaEstado === 'fuera';
+  // Sin IP autorizada: bloquear tanto si está fuera de rango como si no se pudo obtener el GPS
+  // (sin esto, denegar/perder la ubicación dejaba pasar el registro sin ninguna validación)
+  const bloqueado = isEntrada && !ipOk && (geovallaEstado === 'fuera' || geovallaEstado === 'sin-gps');
 
   return (
     <main className="min-h-screen bg-slate-50 dark:bg-slate-950">
@@ -563,11 +565,17 @@ function JornadaContent() {
               </div>
             )}
 
-            {/* Mensaje fuera de rango */}
+            {/* Mensaje fuera de rango / sin GPS */}
             {bloqueado && (
               <p className="rounded-xl bg-red-50 px-4 py-3 text-center text-sm text-red-700 dark:bg-red-900/20 dark:text-red-300">
-                Debes estar a menos de {sedeActual?.radio_metros ?? 100} m de{' '}
-                <strong>{sedeActual?.nombre ?? 'la sede asignada'}</strong>.
+                {geovallaEstado === 'sin-gps'
+                  ? 'Activa la ubicación (GPS) en tu navegador para poder registrar tu entrada.'
+                  : (
+                    <>
+                      Debes estar a menos de {sedeActual?.radio_metros ?? 100} m de{' '}
+                      <strong>{sedeActual?.nombre ?? 'la sede asignada'}</strong>.
+                    </>
+                  )}
               </p>
             )}
 

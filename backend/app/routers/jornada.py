@@ -362,14 +362,19 @@ async def registrar_jornada(
         #    (cubre el caso de empleado enviado a otra sede sin actualizar perfil)
         if sede_detectada is None:
             sede_detectada = _detectar_sede(todas_sedes)
-        # 3. Bloquear solo si hay sedes configuradas en el sistema Y el GPS está disponible
-        #    y no se encontró en ninguna sede
-        if sede_detectada is None and latitud is not None and longitud is not None and todas_sedes:
-            closest = min(todas_sedes, key=lambda s: _haversine_metros(latitud, longitud, s.latitud, s.longitud))
-            dist = int(_haversine_metros(latitud, longitud, closest.latitud, closest.longitud))
+        # 3. Bloquear si hay sedes configuradas y no se encontró coincidencia por IP ni GPS
+        if sede_detectada is None and todas_sedes:
+            if latitud is not None and longitud is not None:
+                closest = min(todas_sedes, key=lambda s: _haversine_metros(latitud, longitud, s.latitud, s.longitud))
+                dist = int(_haversine_metros(latitud, longitud, closest.latitud, closest.longitud))
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f'Estás fuera del rango de todas las sedes ({dist} m de "{closest.nombre}", máx {closest.radio_metros} m)',
+                )
+            # Sin IP autorizada y sin GPS: no hay forma de verificar la ubicación, bloquear
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f'Estás fuera del rango de todas las sedes ({dist} m de "{closest.nombre}", máx {closest.radio_metros} m)',
+                detail='No se pudo verificar tu ubicación. Activa el GPS en tu navegador e inténtalo de nuevo.',
             )
     else:
         # Salida: sin restricción, detectar sede para el registro (asignadas primero, luego todas)
