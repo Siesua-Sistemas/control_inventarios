@@ -39,10 +39,13 @@ _SQL_SEDES = "SELECT Id, Nombre FROM sedes WHERE Estado = 1"
 
 # Consulta de usuarios activos (todos, sin JOIN problemático por campo CSV)
 _SQL_USUARIOS = """
-    SELECT Id, IdSede, Nombre, Apellido, NoIdentificacion
+    SELECT Id, IdSede, Tipo, Nombre, Apellido, NoIdentificacion
     FROM usuarios
     WHERE Estado = 1 AND Id > 0
 """
+
+# Catálogo de roles/tipos de usuario — usado para completar el cargo del empleado
+_SQL_ROLES = "SELECT Id, Nombre FROM roles"
 
 
 # ── Resultado de sincronización ────────────────────────────────────────────────
@@ -168,6 +171,7 @@ def _sync_empleados(
     db: Session,
     rows: list[dict],
     ext_sede_to_internal: dict[int, int],
+    roles_map: dict[int, str],
     result: SyncResult,
 ) -> None:
     from app.models.integracion_siesua import SiesuaMapping
@@ -207,6 +211,11 @@ def _sync_empleados(
             if sid in ext_sede_to_internal
         })
 
+        # Cargo = nombre del rol (Tipo) según el catálogo de roles de SIESUA.
+        # Solo se usa para completar el cargo si está vacío, nunca sobrescribe
+        # un valor ya puesto manualmente en el sistema.
+        cargo = roles_map.get(row.get('Tipo'))
+
         try:
             emp: Empleado | None = None
 
@@ -238,6 +247,7 @@ def _sync_empleados(
                         apellidos=apellidos,
                         cedula=cedula,
                         sede=sede_principal_nombre,
+                        cargo=cargo,
                         en_jornada=True,
                         is_active=True,
                     )
@@ -247,7 +257,10 @@ def _sync_empleados(
                     existing_emp_mappings[ext_id] = emp.id
                     result.empleados_creados += 1
 
-            # Actualizar datos del empleado
+            # Actualizar datos del empleado.
+            # OJO: nunca reactivar aquí (is_active/en_jornada) — si el empleado ya fue
+            # retirado localmente, debe seguir retirado aunque SIESUA aún lo marque
+            # como Estado=1. Reactivar es una acción manual desde el panel de Personal.
             changed = False
             if emp.nombres != nombres:
                 emp.nombres = nombres; changed = True
@@ -255,10 +268,10 @@ def _sync_empleados(
                 emp.apellidos = apellidos; changed = True
             if emp.cedula != cedula:
                 emp.cedula = cedula; changed = True
-            if not emp.en_jornada:
+            if cargo and not emp.cargo:
+                emp.cargo = cargo; changed = True
+            if emp.is_active and not emp.en_jornada:
                 emp.en_jornada = True; changed = True
-            if not emp.is_active:
-                emp.is_active = True; changed = True
 
             if changed:
                 result.empleados_actualizados += 1
@@ -315,10 +328,14 @@ def sincronizar(db: Session) -> SyncResult:
         ext_sede_map = _sync_sedes(db, sedes_rows, result)
         db.flush()
 
-        # 2 — Sincronizar empleados
+        # 2 — Catálogo de roles (Tipo -> cargo)
+        cursor.execute(_SQL_ROLES)
+        roles_map = {r['Id']: (r['Nombre'] or '').strip() for r in cursor.fetchall()}
+
+        # 3 — Sincronizar empleados
         cursor.execute(_SQL_USUARIOS)
         usuarios_rows = cursor.fetchall()
-        _sync_empleados(db, usuarios_rows, ext_sede_map, result)
+        _sync_empleados(db, usuarios_rows, ext_sede_map, roles_map, result)
 
         db.commit()
 
