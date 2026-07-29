@@ -258,9 +258,10 @@ def _sync_empleados(
                     result.empleados_creados += 1
 
             # Actualizar datos del empleado.
-            # OJO: nunca reactivar aquí (is_active/en_jornada) — si el empleado ya fue
-            # retirado localmente, debe seguir retirado aunque SIESUA aún lo marque
-            # como Estado=1. Reactivar es una acción manual desde el panel de Personal.
+            # OJO: nunca reactivar aquí (is_active) ni forzar en_jornada — si el
+            # empleado ya fue retirado localmente, debe seguir retirado aunque
+            # SIESUA aún lo marque como Estado=1, y el switch "Mi Jornada" es
+            # 100% manual desde el panel de Personal una vez creado el empleado.
             changed = False
             if emp.nombres != nombres:
                 emp.nombres = nombres; changed = True
@@ -270,8 +271,6 @@ def _sync_empleados(
                 emp.cedula = cedula; changed = True
             if cargo and not emp.cargo:
                 emp.cargo = cargo; changed = True
-            if emp.is_active and not emp.en_jornada:
-                emp.en_jornada = True; changed = True
 
             if changed:
                 result.empleados_actualizados += 1
