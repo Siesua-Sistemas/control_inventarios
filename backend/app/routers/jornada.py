@@ -16,7 +16,7 @@ from app.database import get_db
 from app.dependencies import get_current_user, require_permissions
 from app.models.bodega import Bodega
 from app.models.empleado import Empleado
-from app.models.jornada import RegistroJornada
+from app.models.jornada import AlmuerzoManual, RegistroJornada
 from app.models.jornada_associations import empleado_sedes_jornada, sede_jornada_bodegas
 from app.models.sede_jornada import SedeJornada
 
@@ -110,6 +110,20 @@ def _almuerzo_minutos(fecha_dia: date, horario_config: dict | None) -> int:
     return int(horario_config.get('almuerzo_domingo_min', 0))
 
 
+def _almuerzo_overrides(db: Session, empleado_ids: list[int], desde: date, hasta: date) -> dict[tuple[int, date], int]:
+    """Carga los overrides manuales de almuerzo en el rango de fechas dado."""
+    if not empleado_ids:
+        return {}
+    rows = db.scalars(
+        select(AlmuerzoManual).where(
+            AlmuerzoManual.empleado_id.in_(empleado_ids),
+            AlmuerzoManual.fecha >= desde,
+            AlmuerzoManual.fecha <= hasta,
+        )
+    ).all()
+    return {(r.empleado_id, r.fecha): r.almuerzo_min for r in rows}
+
+
 def _horarios_por_nombre(db: Session) -> dict[str, dict]:
     """Carga horario_config de todas las sedes activas, indexado por nombre."""
     return {
@@ -198,6 +212,7 @@ class DiaRegistros(BaseModel):
     registros: list[RegistroJornadaOut]
     tiempo_sede: str | None  # tiempo NETO (descontado almuerzo) o None si sin par
     almuerzo_min: int = 0   # minutos de almuerzo descontados (para info)
+    almuerzo_manual: bool = False  # true si el valor fue fijado a mano (no calculado por sede)
 
 
 class SemanaResponse(BaseModel):
@@ -498,6 +513,7 @@ def get_semana(cedula: str, db: Session = Depends(get_db)):
     ).all())
 
     horarios = _horarios_por_nombre(db)
+    overrides = _almuerzo_overrides(db, [empleado.id], lunes, lunes + timedelta(days=6))
 
     dias: list[DiaRegistros] = []
     for i in range(7):
@@ -513,15 +529,19 @@ def get_semana(cedula: str, db: Session = Depends(get_db)):
 
         tiempo_sede = None
         almuerzo_min = 0
+        override = overrides.get((empleado.id, fecha_dia))
         if pares > 0:
             bruto_min = sum(
-                max(0, int((salidas_ord[j].timestamp - entradas_ord[j].timestamp).total_seconds() // 60))
+                max(0, round((salidas_ord[j].timestamp - entradas_ord[j].timestamp).total_seconds() / 60))
                 for j in range(pares)
             )
-            # Descuento de almuerzo según sede del primer registro del día
-            sede_del_dia = regs[0].sede if regs else None
-            horario_cfg = horarios.get(sede_del_dia) if sede_del_dia else None
-            almuerzo_min = _almuerzo_minutos(fecha_dia, horario_cfg)
+            if override is not None:
+                almuerzo_min = override
+            else:
+                # Descuento de almuerzo según sede del primer registro del día
+                sede_del_dia = regs[0].sede if regs else None
+                horario_cfg = horarios.get(sede_del_dia) if sede_del_dia else None
+                almuerzo_min = _almuerzo_minutos(fecha_dia, horario_cfg)
             neto_min = max(0, bruto_min - almuerzo_min)
             tiempo_sede = f"{neto_min // 60}h {neto_min % 60:02d}m"
 
@@ -532,6 +552,7 @@ def get_semana(cedula: str, db: Session = Depends(get_db)):
             registros=[RegistroJornadaOut.model_validate(r) for r in regs],
             tiempo_sede=tiempo_sede,
             almuerzo_min=almuerzo_min,
+            almuerzo_manual=override is not None,
         ))
 
     return SemanaResponse(dias=dias)
@@ -625,6 +646,213 @@ def registrar_salida_manual(
     db.commit()
     db.refresh(registro)
     return registro
+
+
+class EntradaManualIn(BaseModel):
+    empleado_id: int
+    fecha: str            # "YYYY-MM-DD" en hora Bogotá
+    hora: str              # "HH:MM" en hora Bogotá
+    sede: str | None = None
+    notas: str | None = None
+
+
+@router.post('/admin/registros/entrada-manual', response_model=RegistroJornadaOut, status_code=status.HTTP_201_CREATED)
+def registrar_entrada_manual(
+    body: EntradaManualIn,
+    db: Session = Depends(get_db),
+    _user=Depends(require_permissions('jornada:admin')),
+):
+    """Registra una entrada manual — para empleados que olvidaron marcar su ingreso."""
+    empleado = db.get(Empleado, body.empleado_id)
+    if not empleado:
+        raise HTTPException(status_code=404, detail='Empleado no encontrado')
+
+    try:
+        ts_bog = datetime.strptime(f'{body.fecha} {body.hora}', '%Y-%m-%d %H:%M')
+    except ValueError:
+        raise HTTPException(status_code=400, detail='Formato de fecha u hora inválido')
+
+    ts_utc = ts_bog - BOGOTA_OFFSET
+
+    hoy_bog = _bogota_now().date()
+    fecha_bog = ts_bog.date()
+
+    if fecha_bog > hoy_bog:
+        raise HTTPException(status_code=400, detail='No se puede registrar una entrada en una fecha futura')
+
+    start_bog = datetime(fecha_bog.year, fecha_bog.month, fecha_bog.day)
+    start_utc = start_bog - BOGOTA_OFFSET
+    end_utc = start_utc + timedelta(days=1)
+
+    regs_dia = list(db.scalars(
+        select(RegistroJornada)
+        .where(
+            RegistroJornada.empleado_id == body.empleado_id,
+            RegistroJornada.timestamp >= start_utc,
+            RegistroJornada.timestamp < end_utc,
+        )
+        .order_by(RegistroJornada.timestamp)
+    ).all())
+
+    entradas = [r for r in regs_dia if r.tipo == 'entrada']
+    salidas = [r for r in regs_dia if r.tipo == 'salida']
+
+    # Solo se permite para días sin ninguna entrada registrada — no para agregar
+    # una segunda sesión el mismo día (usa "editar" si hay que corregir una hora)
+    if entradas:
+        raise HTTPException(
+            status_code=400,
+            detail='Ya existe una entrada registrada ese día para este empleado. Usa "editar" si necesitas corregir la hora',
+        )
+
+    # Si por alguna razón ya hay una salida ese día, la nueva entrada debe ser anterior a ella
+    if salidas and ts_utc >= salidas[0].timestamp:
+        raise HTTPException(status_code=400, detail='La hora de entrada debe ser anterior a la salida ya registrada ese día')
+
+    registro = RegistroJornada(
+        empleado_id=body.empleado_id,
+        tipo='entrada',
+        timestamp=ts_utc,
+        sede=body.sede or empleado.sede,
+        notas=body.notas or 'Entrada registrada manualmente por administrador',
+        foto_url=None,
+        is_manual=True,
+    )
+    db.add(registro)
+    db.commit()
+    db.refresh(registro)
+    return registro
+
+
+class EditarRegistroIn(BaseModel):
+    fecha: str    # "YYYY-MM-DD" en hora Bogotá
+    hora: str     # "HH:MM" en hora Bogotá
+    notas: str | None = None
+
+
+@router.put('/admin/registros/{registro_id}', response_model=RegistroJornadaOut)
+def editar_registro(
+    registro_id: int,
+    body: EditarRegistroIn,
+    db: Session = Depends(get_db),
+    _user=Depends(require_permissions('jornada:admin')),
+):
+    """Corrige la fecha/hora de un registro existente (entrada o salida), manual o automático."""
+    registro = db.get(RegistroJornada, registro_id)
+    if not registro:
+        raise HTTPException(status_code=404, detail='Registro no encontrado')
+
+    try:
+        ts_bog = datetime.strptime(f'{body.fecha} {body.hora}', '%Y-%m-%d %H:%M')
+    except ValueError:
+        raise HTTPException(status_code=400, detail='Formato de fecha u hora inválido')
+
+    ts_utc = ts_bog - BOGOTA_OFFSET
+
+    hoy_bog = _bogota_now().date()
+    if ts_bog.date() > hoy_bog:
+        raise HTTPException(status_code=400, detail='No se puede editar un registro a una fecha futura')
+
+    # Validar orden contra los demás registros del mismo empleado ese día:
+    # no puede quedar antes de un registro del mismo tipo, ni después de otro del mismo tipo
+    start_bog = datetime(ts_bog.year, ts_bog.month, ts_bog.day)
+    start_utc = start_bog - BOGOTA_OFFSET
+    end_utc = start_utc + timedelta(days=1)
+
+    vecinos = list(db.scalars(
+        select(RegistroJornada)
+        .where(
+            RegistroJornada.empleado_id == registro.empleado_id,
+            RegistroJornada.timestamp >= start_utc,
+            RegistroJornada.timestamp < end_utc,
+            RegistroJornada.id != registro.id,
+        )
+        .order_by(RegistroJornada.timestamp)
+    ).all())
+
+    anterior = next((r for r in reversed(vecinos) if r.timestamp < ts_utc), None)
+    siguiente = next((r for r in vecinos if r.timestamp > ts_utc), None)
+
+    if anterior and anterior.tipo == registro.tipo:
+        raise HTTPException(status_code=400, detail=f'Ya existe un registro de tipo "{registro.tipo}" antes de esa hora ese día')
+    if siguiente and siguiente.tipo == registro.tipo:
+        raise HTTPException(status_code=400, detail=f'Ya existe un registro de tipo "{registro.tipo}" después de esa hora ese día')
+
+    registro.timestamp = ts_utc
+    if body.notas is not None:
+        registro.notas = body.notas
+    registro.is_manual = True
+    db.commit()
+    db.refresh(registro)
+    return registro
+
+
+class AlmuerzoManualIn(BaseModel):
+    empleado_id: int
+    fecha: str          # "YYYY-MM-DD"
+    almuerzo_min: int
+
+
+@router.put('/admin/almuerzo')
+def fijar_almuerzo_manual(
+    body: AlmuerzoManualIn,
+    db: Session = Depends(get_db),
+    user=Depends(require_permissions('jornada:admin')),
+):
+    """Fija (o reemplaza) el descuento de almuerzo de un empleado para un día puntual,
+    ignorando el cálculo automático por horario de sede."""
+    empleado = db.get(Empleado, body.empleado_id)
+    if not empleado:
+        raise HTTPException(status_code=404, detail='Empleado no encontrado')
+
+    try:
+        fecha_dia = date.fromisoformat(body.fecha)
+    except ValueError:
+        raise HTTPException(status_code=400, detail='Fecha inválida')
+
+    if body.almuerzo_min < 0:
+        raise HTTPException(status_code=400, detail='Los minutos de almuerzo no pueden ser negativos')
+
+    existente = db.scalar(
+        select(AlmuerzoManual).where(
+            AlmuerzoManual.empleado_id == body.empleado_id,
+            AlmuerzoManual.fecha == fecha_dia,
+        )
+    )
+    if existente:
+        existente.almuerzo_min = body.almuerzo_min
+    else:
+        db.add(AlmuerzoManual(
+            empleado_id=body.empleado_id,
+            fecha=fecha_dia,
+            almuerzo_min=body.almuerzo_min,
+            created_by_id=user.id,
+        ))
+    db.commit()
+    return {'ok': True, 'almuerzo_min': body.almuerzo_min}
+
+
+@router.delete('/admin/almuerzo', status_code=status.HTTP_204_NO_CONTENT)
+def quitar_almuerzo_manual(
+    empleado_id: int = Query(...),
+    fecha: str = Query(...),
+    db: Session = Depends(get_db),
+    _user=Depends(require_permissions('jornada:admin')),
+):
+    """Elimina el override manual — vuelve a calcularse automáticamente por horario de sede."""
+    try:
+        fecha_dia = date.fromisoformat(fecha)
+    except ValueError:
+        raise HTTPException(status_code=400, detail='Fecha inválida')
+
+    db.execute(
+        delete(AlmuerzoManual).where(
+            AlmuerzoManual.empleado_id == empleado_id,
+            AlmuerzoManual.fecha == fecha_dia,
+        )
+    )
+    db.commit()
+
 
 @router.post('/admin/sedes', response_model=SedeJornadaOut, status_code=status.HTTP_201_CREATED)
 def create_sede(
@@ -742,6 +970,7 @@ def get_asistencia(
         records_by_emp[r.empleado_id].append(r)
 
     horarios_dia = _horarios_por_nombre(db)
+    overrides_dia = _almuerzo_overrides(db, emp_ids, fecha, fecha)
     empleados_out: list[EmpleadoAsistenciaOut] = []
     presentes = 0
     completos = 0
@@ -774,10 +1003,14 @@ def get_asistencia(
 
         total_min: int | None = None
         if primer_entrada and ultima_salida:
-            bruto = int((ultima_salida.timestamp - primer_entrada.timestamp).total_seconds() / 60)
-            sede_nombre = primer_entrada.sede
-            horario_cfg = horarios_dia.get(sede_nombre) if sede_nombre else None
-            almuerzo = _almuerzo_minutos(fecha, horario_cfg)
+            bruto = round((ultima_salida.timestamp - primer_entrada.timestamp).total_seconds() / 60)
+            override = overrides_dia.get((emp.id, fecha))
+            if override is not None:
+                almuerzo = override
+            else:
+                sede_nombre = primer_entrada.sede
+                horario_cfg = horarios_dia.get(sede_nombre) if sede_nombre else None
+                almuerzo = _almuerzo_minutos(fecha, horario_cfg)
             total_min = max(0, bruto - almuerzo)
 
         empleados_out.append(EmpleadoAsistenciaOut(
@@ -887,6 +1120,7 @@ def reporte_semanal(
 
     hoy = _bogota_now().date()
     horarios = _horarios_por_nombre(db)
+    overrides = _almuerzo_overrides(db, emp_ids, lunes, domingo)
     resultado: list[EmpleadoSemanaOut] = []
 
     for emp in empleados:
@@ -909,17 +1143,21 @@ def reporte_semanal(
             # Sumar todos los pares entrada→salida cronológicos
             pares = min(len(entradas_ord), len(salidas_ord))
             bruto_min = sum(
-                max(0, int((salidas_ord[j].timestamp - entradas_ord[j].timestamp).total_seconds() // 60))
+                max(0, round((salidas_ord[j].timestamp - entradas_ord[j].timestamp).total_seconds() / 60))
                 for j in range(pares)
             )
 
             tiempo_sede = None
             almuerzo_min = 0
+            override = overrides.get((emp.id, fecha_dia))
             if pares > 0:
-                # Descuento de almuerzo según sede del primer registro del día
-                sede_del_dia = regs[0].sede if regs else None
-                horario_cfg = horarios.get(sede_del_dia) if sede_del_dia else None
-                almuerzo_min = _almuerzo_minutos(fecha_dia, horario_cfg)
+                if override is not None:
+                    almuerzo_min = override
+                else:
+                    # Descuento de almuerzo según sede del primer registro del día
+                    sede_del_dia = regs[0].sede if regs else None
+                    horario_cfg = horarios.get(sede_del_dia) if sede_del_dia else None
+                    almuerzo_min = _almuerzo_minutos(fecha_dia, horario_cfg)
                 dia_min = max(0, bruto_min - almuerzo_min)
                 tiempo_sede = f"{dia_min // 60}h {dia_min % 60:02d}m"
                 total_min += dia_min
@@ -934,6 +1172,7 @@ def reporte_semanal(
                 registros=[RegistroJornadaOut.model_validate(r) for r in regs],
                 tiempo_sede=tiempo_sede,
                 almuerzo_min=almuerzo_min,
+                almuerzo_manual=override is not None,
             ))
 
         resultado.append(EmpleadoSemanaOut(

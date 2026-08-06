@@ -1642,7 +1642,7 @@ export async function addComentario(ticketId: number, data: { contenido: string;
   });
 }
 
-// ── Mi Jornada ────────────────────────────────────────────────────────────────
+// ── Nuestro Horario ───────────────────────────────────────────────────────────
 
 export interface RegistroJornadaOut {
   id: number;
@@ -1742,6 +1742,7 @@ export interface DiaRegistros {
   registros: RegistroJornadaOut[];
   tiempo_sede: string | null;
   almuerzo_min: number;
+  almuerzo_manual: boolean;
 }
 
 export interface SemanaJornadaResponse {
@@ -1855,6 +1856,52 @@ export async function registrarSalidaManual(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ empleado_id: empleadoId, fecha, hora, notas }),
   });
+}
+
+export async function registrarEntradaManual(
+  empleadoId: number,
+  fecha: string,
+  hora: string,
+  opciones?: { sede?: string; notas?: string },
+): Promise<RegistroJornadaOut> {
+  return apiRequest<RegistroJornadaOut>('/api/v1/jornada/admin/registros/entrada-manual', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      empleado_id: empleadoId, fecha, hora,
+      sede: opciones?.sede, notas: opciones?.notas,
+    }),
+  });
+}
+
+export async function editarRegistroJornada(
+  registroId: number,
+  fecha: string,
+  hora: string,
+  notas?: string,
+): Promise<RegistroJornadaOut> {
+  return apiRequest<RegistroJornadaOut>(`/api/v1/jornada/admin/registros/${registroId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fecha, hora, notas }),
+  });
+}
+
+export async function fijarAlmuerzoManual(
+  empleadoId: number,
+  fecha: string,
+  almuerzoMin: number,
+): Promise<void> {
+  await apiRequest('/api/v1/jornada/admin/almuerzo', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ empleado_id: empleadoId, fecha, almuerzo_min: almuerzoMin }),
+  });
+}
+
+export async function quitarAlmuerzoManual(empleadoId: number, fecha: string): Promise<void> {
+  const q = new URLSearchParams({ empleado_id: String(empleadoId), fecha });
+  await apiRequest(`/api/v1/jornada/admin/almuerzo?${q.toString()}`, { method: 'DELETE' });
 }
 
 export async function registrarJornada(

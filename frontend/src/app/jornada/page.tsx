@@ -388,7 +388,7 @@ function JornadaContent() {
             </svg>
           </div>
           <p className="text-sm uppercase tracking-[0.3em] text-cyan-700 dark:text-cyan-300">Control de asistencia</p>
-          <h1 className="mt-2 text-2xl font-bold">Mi Jornada</h1>
+          <h1 className="mt-2 text-2xl font-bold">Nuestro Horario</h1>
           <p className="mt-2 mb-6 text-sm text-slate-600 dark:text-slate-300">
             Ingresa tu cédula para registrar tu entrada o salida.
           </p>
@@ -520,7 +520,7 @@ function JornadaContent() {
       <div className="border-b border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-900">
         <div className="mx-auto flex max-w-lg items-center justify-between">
           <div>
-            <p className="text-xs uppercase tracking-widest text-cyan-700 dark:text-cyan-300">Mi Jornada</p>
+            <p className="text-xs uppercase tracking-widest text-cyan-700 dark:text-cyan-300">Nuestro Horario</p>
             <h1 className="mt-0.5 text-base font-bold leading-tight">
               {data.nombres} {data.apellidos}
             </h1>

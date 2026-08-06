@@ -5,14 +5,20 @@ import { NavBar } from '@/components/nav-bar';
 import {
   DiaRegistros,
   EmpleadoSemanaOut,
+  RegistroJornadaOut,
   ReporteSemanalOut,
   SedeJornadaOut,
+  editarRegistroJornada,
+  fijarAlmuerzoManual,
   getReporteSemanal,
   getSedesJornada,
   isAuthenticated,
+  quitarAlmuerzoManual,
+  registrarEntradaManual,
   registrarSalidaManual,
 } from '@/lib/api';
 import { useRouter } from 'next/navigation';
+import { useAuth } from '@/components/auth-provider';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -31,6 +37,16 @@ function formatHora(iso: string) {
 function formatMinutos(min: number): string {
   if (min === 0) return '0h';
   return `${Math.floor(min / 60)}h ${(min % 60).toString().padStart(2, '0')}m`;
+}
+
+function toBogotaFechaInput(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
+}
+
+function toBogotaHoraInput(iso: string): string {
+  return new Date(iso).toLocaleTimeString('en-GB', {
+    timeZone: 'America/Bogota', hour: '2-digit', minute: '2-digit', hour12: false,
+  });
 }
 
 function labelSemana(inicio: string, fin: string): string {
@@ -57,23 +73,29 @@ function SortIcon({ activo, dir }: { activo: boolean; dir: 'asc' | 'desc' }) {
 // ── Modal detalle de un día ───────────────────────────────────────────────────
 
 function ModalDia({
-  emp, dia, onClose, onSalidaRegistrada,
+  emp, dia, onClose, onCambio, puedeAdmin,
 }: {
   emp: EmpleadoSemanaOut;
   dia: DiaRegistros;
   onClose: () => void;
-  onSalidaRegistrada: () => void;
+  onCambio: () => void;
+  puedeAdmin: boolean;
 }) {
   const entradas = dia.registros.filter((r) => r.tipo === 'entrada').sort((a, b) => a.timestamp.localeCompare(b.timestamp));
   const salidas  = dia.registros.filter((r) => r.tipo === 'salida').sort((a, b) => a.timestamp.localeCompare(b.timestamp));
   const pares = Math.min(entradas.length, salidas.length);
 
-  // Salida manual: día pasado (no hoy), con entrada sin par de salida
   const hoyBog = new Date(new Date().toLocaleString('en-CA', { timeZone: 'America/Bogota' }).slice(0, 10) + 'T00:00:00');
   const fechaDia = new Date(dia.fecha + 'T00:00:00');
   const esDiaPasado = fechaDia < hoyBog;
+  const esHoyOPasado = fechaDia <= hoyBog;
   const necesitaSalida = entradas.length > salidas.length;
-  const mostrarFormSalida = esDiaPasado && necesitaSalida;
+
+  // Salida manual: solo días pasados (no hoy), con entrada sin par de salida
+  const mostrarFormSalida = puedeAdmin && esDiaPasado && necesitaSalida;
+  // Entrada manual: hoy o días pasados, solo si ese día NO tiene ninguna entrada
+  // registrada (no es para agregar una segunda sesión, sino para el olvido total)
+  const mostrarFormEntrada = puedeAdmin && esHoyOPasado && entradas.length === 0;
 
   const [horaSalida, setHoraSalida] = useState('17:00');
   const [guardando, setGuardando] = useState(false);
@@ -85,12 +107,101 @@ function ModalDia({
     setErrorSalida('');
     try {
       await registrarSalidaManual(emp.empleado_id, dia.fecha, horaSalida);
-      onSalidaRegistrada();
+      onCambio();
       onClose();
     } catch (err) {
       setErrorSalida(err instanceof Error ? err.message : 'Error al registrar la salida');
     } finally {
       setGuardando(false);
+    }
+  }
+
+  const [horaEntrada, setHoraEntrada] = useState('08:00');
+  const [guardandoEntrada, setGuardandoEntrada] = useState(false);
+  const [errorEntrada, setErrorEntrada] = useState('');
+
+  async function handleEntradaManual(e: React.FormEvent) {
+    e.preventDefault();
+    setGuardandoEntrada(true);
+    setErrorEntrada('');
+    try {
+      await registrarEntradaManual(emp.empleado_id, dia.fecha, horaEntrada, { sede: emp.sede ?? undefined });
+      onCambio();
+      onClose();
+    } catch (err) {
+      setErrorEntrada(err instanceof Error ? err.message : 'Error al registrar la entrada');
+    } finally {
+      setGuardandoEntrada(false);
+    }
+  }
+
+  // Edición inline de un registro existente
+  const [editando, setEditando] = useState<number | null>(null);
+  const [editFecha, setEditFecha] = useState('');
+  const [editHora, setEditHora] = useState('');
+  const [guardandoEdicion, setGuardandoEdicion] = useState(false);
+  const [errorEdicion, setErrorEdicion] = useState('');
+
+  function iniciarEdicion(r: RegistroJornadaOut) {
+    setEditando(r.id);
+    setEditFecha(toBogotaFechaInput(r.timestamp));
+    setEditHora(toBogotaHoraInput(r.timestamp));
+    setErrorEdicion('');
+  }
+
+  async function handleGuardarEdicion(e: React.FormEvent) {
+    e.preventDefault();
+    if (editando == null) return;
+    setGuardandoEdicion(true);
+    setErrorEdicion('');
+    try {
+      await editarRegistroJornada(editando, editFecha, editHora);
+      onCambio();
+      onClose();
+    } catch (err) {
+      setErrorEdicion(err instanceof Error ? err.message : 'Error al guardar el cambio');
+    } finally {
+      setGuardandoEdicion(false);
+    }
+  }
+
+  // Edición manual del descuento de almuerzo del día
+  const [editandoAlmuerzo, setEditandoAlmuerzo] = useState(false);
+  const [almuerzoInput, setAlmuerzoInput] = useState(String(dia.almuerzo_min));
+  const [guardandoAlmuerzo, setGuardandoAlmuerzo] = useState(false);
+  const [errorAlmuerzo, setErrorAlmuerzo] = useState('');
+
+  async function handleGuardarAlmuerzo(e: React.FormEvent) {
+    e.preventDefault();
+    const minutos = Number(almuerzoInput);
+    if (!Number.isFinite(minutos) || minutos < 0) {
+      setErrorAlmuerzo('Ingresa un número de minutos válido');
+      return;
+    }
+    setGuardandoAlmuerzo(true);
+    setErrorAlmuerzo('');
+    try {
+      await fijarAlmuerzoManual(emp.empleado_id, dia.fecha, minutos);
+      onCambio();
+      onClose();
+    } catch (err) {
+      setErrorAlmuerzo(err instanceof Error ? err.message : 'Error al guardar');
+    } finally {
+      setGuardandoAlmuerzo(false);
+    }
+  }
+
+  async function handleQuitarAlmuerzoManual() {
+    setGuardandoAlmuerzo(true);
+    setErrorAlmuerzo('');
+    try {
+      await quitarAlmuerzoManual(emp.empleado_id, dia.fecha);
+      onCambio();
+      onClose();
+    } catch (err) {
+      setErrorAlmuerzo(err instanceof Error ? err.message : 'Error al revertir a automático');
+    } finally {
+      setGuardandoAlmuerzo(false);
     }
   }
 
@@ -143,39 +254,76 @@ function ModalDia({
             dia.registros
               .slice()
               .sort((a, b) => a.timestamp.localeCompare(b.timestamp))
-              .map((r, i) => (
-                <div key={i} className="flex items-center gap-3">
-                  <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
-                    r.tipo === 'entrada'
-                      ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
-                      : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
-                  }`}>
-                    {r.tipo === 'entrada' ? '↗' : '↙'}
-                  </span>
-                  <div className="flex-1 min-w-0">
-                    <p className={`text-xs font-semibold ${
-                      r.tipo === 'entrada' ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-500 dark:text-slate-400'
-                    }`}>
-                      {r.tipo === 'entrada' ? 'Ingreso' : 'Salida'}
+              .map((r) => (
+                editando === r.id ? (
+                  <form key={r.id} onSubmit={handleGuardarEdicion}
+                    className="rounded-xl border border-cyan-200 bg-cyan-50/60 p-3 dark:border-cyan-900/40 dark:bg-cyan-900/10">
+                    <p className="mb-2 text-xs font-semibold text-cyan-700 dark:text-cyan-400">
+                      Editando {r.tipo === 'entrada' ? 'ingreso' : 'salida'}
                     </p>
-                    {r.sede && (
-                      <p className="truncate text-[10px] text-slate-400">{r.sede}</p>
+                    <div className="flex items-center gap-2">
+                      <input type="date" value={editFecha} onChange={(e) => setEditFecha(e.target.value)} required
+                        className="flex-1 rounded-lg border border-cyan-300 bg-white px-2 py-1.5 text-xs text-slate-700 focus:border-cyan-400 focus:outline-none dark:border-cyan-800 dark:bg-slate-800 dark:text-slate-200" />
+                      <input type="time" value={editHora} onChange={(e) => setEditHora(e.target.value)} required
+                        className="w-24 rounded-lg border border-cyan-300 bg-white px-2 py-1.5 text-xs text-slate-700 focus:border-cyan-400 focus:outline-none dark:border-cyan-800 dark:bg-slate-800 dark:text-slate-200" />
+                    </div>
+                    <div className="mt-2 flex items-center gap-2">
+                      <button type="submit" disabled={guardandoEdicion}
+                        className="rounded-lg bg-cyan-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-cyan-700 disabled:opacity-50 dark:bg-cyan-500 dark:text-slate-950">
+                        {guardandoEdicion ? 'Guardando…' : 'Guardar'}
+                      </button>
+                      <button type="button" onClick={() => setEditando(null)}
+                        className="rounded-lg px-3 py-1.5 text-xs font-medium text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800">
+                        Cancelar
+                      </button>
+                    </div>
+                    {errorEdicion && (
+                      <p className="mt-2 text-xs text-red-600 dark:text-red-400">{errorEdicion}</p>
                     )}
-                  </div>
-                  <span className="flex shrink-0 items-center gap-1">
-                    {r.is_manual && (
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
-                        className="h-3.5 w-3.5 text-violet-500 dark:text-violet-400"
-                        aria-label="Salida registrada manualmente por administrador">
-                        <title>Salida registrada manualmente por administrador</title>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z" />
-                      </svg>
-                    )}
-                    <span className="text-sm tabular-nums font-medium text-slate-700 dark:text-slate-200">
-                      {formatHora(r.timestamp)}
+                  </form>
+                ) : (
+                  <div key={r.id} className="flex items-center gap-3">
+                    <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
+                      r.tipo === 'entrada'
+                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+                        : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
+                    }`}>
+                      {r.tipo === 'entrada' ? '↗' : '↙'}
                     </span>
-                  </span>
-                </div>
+                    <div className="flex-1 min-w-0">
+                      <p className={`text-xs font-semibold ${
+                        r.tipo === 'entrada' ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-500 dark:text-slate-400'
+                      }`}>
+                        {r.tipo === 'entrada' ? 'Ingreso' : 'Salida'}
+                      </p>
+                      {r.sede && (
+                        <p className="truncate text-[10px] text-slate-400">{r.sede}</p>
+                      )}
+                    </div>
+                    <span className="flex shrink-0 items-center gap-1.5">
+                      {r.is_manual && (
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
+                          className="h-3.5 w-3.5 text-violet-500 dark:text-violet-400"
+                          aria-label="Registrado o corregido manualmente por administrador">
+                          <title>Registrado o corregido manualmente por administrador</title>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z" />
+                        </svg>
+                      )}
+                      <span className="text-sm tabular-nums font-medium text-slate-700 dark:text-slate-200">
+                        {formatHora(r.timestamp)}
+                      </span>
+                      {puedeAdmin && (
+                        <button type="button" onClick={() => iniciarEdicion(r)}
+                          className="rounded p-1 text-slate-300 hover:bg-slate-100 hover:text-cyan-600 dark:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-cyan-400"
+                          aria-label="Editar registro">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-3.5 w-3.5">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487z" />
+                          </svg>
+                        </button>
+                      )}
+                    </span>
+                  </div>
+                )
               ))
           )}
         </div>
@@ -237,6 +385,39 @@ function ModalDia({
           </form>
         )}
 
+        {/* Formulario entrada manual — hoy o días pasados, sin entrada pendiente de salida */}
+        {mostrarFormEntrada && (
+          <form onSubmit={handleEntradaManual} className="border-t border-emerald-200/80 bg-emerald-50/60 px-5 py-4 dark:border-emerald-900/40 dark:bg-emerald-900/10">
+            <div className="mb-2 flex items-center gap-2">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+              </svg>
+              <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">
+                Sin entrada registrada ese día — ingresa la hora de entrada
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="time"
+                value={horaEntrada}
+                onChange={(e) => setHoraEntrada(e.target.value)}
+                required
+                className="flex-1 rounded-lg border border-emerald-300 bg-white px-3 py-2 text-sm text-slate-700 focus:border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-400/20 dark:border-emerald-700 dark:bg-slate-800 dark:text-slate-200"
+              />
+              <button
+                type="submit"
+                disabled={guardandoEntrada}
+                className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-700 disabled:opacity-50 dark:bg-cyan-500 dark:text-slate-950"
+              >
+                {guardandoEntrada ? 'Guardando…' : 'Registrar'}
+              </button>
+            </div>
+            {errorEntrada && (
+              <p className="mt-2 text-xs text-red-600 dark:text-red-400">{errorEntrada}</p>
+            )}
+          </form>
+        )}
+
         {/* Total */}
         {dia.tiempo_sede && (
           <div className="rounded-b-2xl border-t border-slate-100 bg-slate-50 px-5 py-3 dark:border-slate-800 dark:bg-slate-800/50">
@@ -248,10 +429,57 @@ function ModalDia({
                 {dia.tiempo_sede}
               </span>
             </div>
-            {dia.almuerzo_min > 0 && (
-              <p className="mt-1 text-right text-[10px] text-slate-400 dark:text-slate-500">
-                Se restaron {dia.almuerzo_min} min de almuerzo según el horario de la sede
-              </p>
+
+            {editandoAlmuerzo ? (
+              <form onSubmit={handleGuardarAlmuerzo} className="mt-2 rounded-lg border border-cyan-200 bg-white p-2.5 dark:border-cyan-900/40 dark:bg-slate-900">
+                <p className="mb-1.5 text-[10px] font-semibold text-cyan-700 dark:text-cyan-400">Minutos de almuerzo a descontar</p>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min={0}
+                    value={almuerzoInput}
+                    onChange={(e) => setAlmuerzoInput(e.target.value)}
+                    required
+                    className="w-20 rounded-lg border border-cyan-300 bg-white px-2 py-1 text-xs text-slate-700 focus:border-cyan-400 focus:outline-none dark:border-cyan-800 dark:bg-slate-800 dark:text-slate-200"
+                  />
+                  <button type="submit" disabled={guardandoAlmuerzo}
+                    className="rounded-lg bg-cyan-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-cyan-700 disabled:opacity-50 dark:bg-cyan-500 dark:text-slate-950">
+                    Guardar
+                  </button>
+                  {dia.almuerzo_manual && (
+                    <button type="button" onClick={handleQuitarAlmuerzoManual} disabled={guardandoAlmuerzo}
+                      className="rounded-lg px-2.5 py-1 text-xs font-medium text-violet-600 hover:bg-violet-50 disabled:opacity-50 dark:text-violet-400 dark:hover:bg-violet-900/20">
+                      Usar automático
+                    </button>
+                  )}
+                  <button type="button" onClick={() => setEditandoAlmuerzo(false)}
+                    className="rounded-lg px-2.5 py-1 text-xs font-medium text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800">
+                    Cancelar
+                  </button>
+                </div>
+                {errorAlmuerzo && (
+                  <p className="mt-1.5 text-[10px] text-red-600 dark:text-red-400">{errorAlmuerzo}</p>
+                )}
+              </form>
+            ) : (
+              <div className="mt-1 flex items-center justify-end gap-1.5">
+                {(dia.almuerzo_min > 0 || dia.almuerzo_manual) && (
+                  <p className="text-right text-[10px] text-slate-400 dark:text-slate-500">
+                    Se restaron {dia.almuerzo_min} min de almuerzo
+                    {dia.almuerzo_manual ? ' (fijado a mano)' : ' según el horario de la sede'}
+                  </p>
+                )}
+                {puedeAdmin && (
+                  <button type="button"
+                    onClick={() => { setAlmuerzoInput(String(dia.almuerzo_min)); setEditandoAlmuerzo(true); }}
+                    className="rounded p-0.5 text-slate-300 hover:bg-slate-200 hover:text-cyan-600 dark:text-slate-600 dark:hover:bg-slate-700 dark:hover:text-cyan-400"
+                    aria-label="Editar almuerzo">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-3 w-3">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487z" />
+                    </svg>
+                  </button>
+                )}
+              </div>
             )}
           </div>
         )}
@@ -263,11 +491,12 @@ function ModalDia({
 // ── Celda de día (tabla general) ──────────────────────────────────────────────
 
 function DiaCell({
-  dia, sedePrincipal, onSelect,
+  dia, sedePrincipal, onSelect, puedeAdmin,
 }: {
   dia: DiaRegistros;
   sedePrincipal: string | null;
   onSelect: () => void;
+  puedeAdmin: boolean;
 }) {
   const entradas = dia.registros.filter((r) => r.tipo === 'entrada').sort((a, b) => a.timestamp.localeCompare(b.timestamp));
   const salidas  = dia.registros.filter((r) => r.tipo === 'salida').sort((a, b) => a.timestamp.localeCompare(b.timestamp));
@@ -280,6 +509,19 @@ function DiaCell({
   }
 
   if (!primerEntrada && !ultimaSalida) {
+    // Sin registros: solo clicable para administradores (agregar entrada manual)
+    if (puedeAdmin) {
+      return (
+        <td className="border border-slate-100 px-1.5 py-1.5 text-center dark:border-slate-800">
+          <button
+            onClick={onSelect}
+            className="w-full rounded-lg px-1.5 py-1.5 text-xs text-slate-300 transition-colors hover:bg-slate-100 hover:text-slate-500 dark:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-400"
+          >
+            —
+          </button>
+        </td>
+      );
+    }
     return (
       <td className="border border-slate-100 px-2 py-2 text-center dark:border-slate-800">
         <span className="text-xs text-slate-300 dark:text-slate-600">—</span>
@@ -376,9 +618,11 @@ function DiaCell({
 function EmpleadoRow({
   emp,
   onSelectDia,
+  puedeAdmin,
 }: {
   emp: EmpleadoSemanaOut;
   onSelectDia: (dia: DiaRegistros) => void;
+  puedeAdmin: boolean;
 }) {
   return (
     <tr className="hover:bg-slate-50 dark:hover:bg-slate-800/30">
@@ -398,6 +642,7 @@ function EmpleadoRow({
           dia={dia}
           sedePrincipal={emp.sede}
           onSelect={() => onSelectDia(dia)}
+          puedeAdmin={puedeAdmin}
         />
       ))}
       <td className="border border-slate-100 px-2 py-2 text-center dark:border-slate-800">
@@ -667,6 +912,8 @@ function InformeEmpleado({ emp, semanaLabel }: { emp: EmpleadoSemanaOut; semanaL
 
 export default function ReporteSemanalPage() {
   const router = useRouter();
+  const { hasPermission } = useAuth();
+  const puedeAdmin = hasPermission('jornada:admin');
   const [reporte, setReporte] = useState<ReporteSemanalOut | null>(null);
   const [sedes, setSedes] = useState<SedeJornadaOut[]>([]);
   const [filtroSede, setFiltroSede] = useState<string>(''); // '' | 'home_office' | id numérico
@@ -766,7 +1013,7 @@ export default function ReporteSemanalPage() {
           <div className="mb-5 flex flex-wrap items-start justify-between gap-4 print:mb-3">
             <div>
               <p className="text-sm uppercase tracking-[0.3em] text-cyan-700 dark:text-cyan-300 print:text-cyan-700">
-                Jornada
+                Nuestro Horario
               </p>
               <h1 className="mt-0.5 text-2xl font-bold text-slate-900 dark:text-slate-50">
                 {modoInforme
@@ -933,7 +1180,7 @@ export default function ReporteSemanalPage() {
           ) : !reporte || reporte.empleados.length === 0 ? (
             <div className="rounded-2xl border border-slate-200 bg-white py-16 text-center dark:border-slate-700 dark:bg-slate-900">
               <p className="text-sm text-slate-500 dark:text-slate-400">
-                No hay empleados con Mi Jornada activo para esta semana.
+                No hay empleados con Nuestro Horario activo para esta semana.
               </p>
             </div>
           ) : empleadosFiltrados.length === 0 ? (
@@ -1028,6 +1275,7 @@ export default function ReporteSemanalPage() {
                       key={emp.empleado_id}
                       emp={emp}
                       onSelectDia={(dia) => setModalDia({ emp, dia })}
+                      puedeAdmin={puedeAdmin}
                     />
                   ))}
                   <TotalesRow reporte={{ ...reporte, empleados: empleadosOrdenados }} />
@@ -1085,7 +1333,8 @@ export default function ReporteSemanalPage() {
           emp={modalDia.emp}
           dia={modalDia.dia}
           onClose={() => setModalDia(null)}
-          onSalidaRegistrada={cargar}
+          onCambio={cargar}
+          puedeAdmin={puedeAdmin}
         />
       )}
 

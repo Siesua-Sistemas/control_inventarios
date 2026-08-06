@@ -632,7 +632,7 @@ export default function SedesAdminPage() {
               </button>
               <div>
                 <p className="text-xs uppercase tracking-widest text-cyan-700 dark:text-cyan-300">
-                  Mi Jornada · Admin
+                  Nuestro Horario · Admin
                 </p>
                 <h1 className="text-lg font-bold">Sedes y Geovallas</h1>
               </div>

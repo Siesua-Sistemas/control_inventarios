@@ -135,10 +135,10 @@ export default function NuevoEmpleadoPage() {
 
           <hr className="border-slate-100 dark:border-slate-800" />
 
-          {/* Mi Jornada */}
+          {/* Nuestro Horario */}
           <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-800/50">
             <div>
-              <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">Mi Jornada</p>
+              <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">Nuestro Horario</p>
               <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">Aparece en el control de asistencia diario</p>
             </div>
             <button

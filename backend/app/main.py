@@ -244,6 +244,18 @@ def _run_migrations() -> None:
         conn.execute(text(
             "ALTER TABLE sedes_jornada ADD COLUMN IF NOT EXISTS horario_config JSONB"
         ))
+        # Almuerzo manual — override puntual del descuento automático por sede/día
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS jornada_almuerzo_manual (
+                id SERIAL PRIMARY KEY,
+                empleado_id INTEGER NOT NULL REFERENCES empleados(id) ON DELETE CASCADE,
+                fecha DATE NOT NULL,
+                almuerzo_min INTEGER NOT NULL,
+                created_by_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                CONSTRAINT uq_jornada_almuerzo_empleado_fecha UNIQUE (empleado_id, fecha)
+            )
+        """))
         # Integración SIESUA — tabla de mapeo aislada
         conn.execute(text("""
             CREATE TABLE IF NOT EXISTS integracion_siesua_mapping (

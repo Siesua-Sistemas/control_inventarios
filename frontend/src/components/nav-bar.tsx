@@ -43,7 +43,7 @@ const NAV_ITEMS: NavItem[] = [
     { href: '/jornada/admin/sedes', label: 'Ubicaciones', permission: 'jornada:admin' },
   ]},
   { label: 'Mi espacio', links: [
-    { href: '/jornada', label: 'Mi Jornada', permission: null },
+    { href: '/jornada', label: 'Nuestro Horario', permission: null },
     { href: '/tickets', label: 'Mis tickets', permission: 'tickets:read' },
     { href: '/portal', label: 'Mi portal', permission: null },
   ]},

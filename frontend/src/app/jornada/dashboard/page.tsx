@@ -400,7 +400,7 @@ export default function JornadaDashboardPage() {
         {/* Header */}
         <div className="border-b border-slate-200 bg-white px-4 py-4 dark:border-slate-800 dark:bg-slate-900">
           <div className="mx-auto max-w-7xl">
-            <p className="text-xs uppercase tracking-[0.3em] text-cyan-700 dark:text-cyan-300">Mi Jornada</p>
+            <p className="text-xs uppercase tracking-[0.3em] text-cyan-700 dark:text-cyan-300">Nuestro Horario</p>
             <h1 className="mt-0.5 text-2xl font-bold">Control de Asistencia</h1>
             {data && (
               <p className="mt-0.5 text-sm capitalize text-slate-500 dark:text-slate-400">
