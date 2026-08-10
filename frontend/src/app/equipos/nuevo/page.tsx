@@ -7,7 +7,7 @@ import { DatePickerPresets } from '@/components/date-picker-presets';
 import { NavBar } from '@/components/nav-bar';
 import { createEquipment, isAuthenticated, listBodegas, listEquipmentTipos, type BodegaRow, type EquipmentPayload, type EquipmentTipo } from '@/lib/api';
 
-const ESTADOS = ['Disponible', 'En bodega', 'En mantenimiento', 'Dañado', 'Prestado', 'Perdido', 'Dado de baja'];
+const ESTADOS = ['Disponible', 'Asignado', 'En bodega', 'En mantenimiento', 'Dañado', 'Prestado', 'Perdido', 'Dado de baja'];
 const CRITICIDADES = ['Alta', 'Media', 'Baja'];
 const DOMINIOS = ['IT', 'Bioingeniería', 'General'];
 
