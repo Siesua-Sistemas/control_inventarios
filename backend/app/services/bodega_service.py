@@ -62,10 +62,21 @@ class BodegaService:
 
     def update_bodega(self, bodega_id: int, payload: BodegaUpdate) -> Bodega:
         bodega = self.get_bodega(bodega_id)
+        nueva_sede = payload.sede.strip() if payload.sede is not None else None
+        sede_cambio = nueva_sede is not None and nueva_sede != bodega.sede
         for field, value in payload.model_dump(exclude_none=True).items():
             setattr(bodega, field, value.strip() if isinstance(value, str) else value)
         bodega.updated_at = datetime.utcnow()
-        return self.repository.update(bodega)
+        actualizada = self.repository.update(bodega)
+        if sede_cambio:
+            # Propaga el nuevo nombre de sede a los equipos ya enlazados a esta
+            # bodega, para que el texto libre `equipment.sede` no quede desfasado.
+            from app.models.equipment import Equipment
+            self.repository.db.query(Equipment).filter(
+                Equipment.bodega_id == bodega_id
+            ).update({Equipment.sede: actualizada.sede})
+            self.repository.db.commit()
+        return actualizada
 
     def delete_bodega(self, bodega_id: int) -> None:
         bodega = self.get_bodega(bodega_id)

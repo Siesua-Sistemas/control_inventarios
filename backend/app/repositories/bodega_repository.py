@@ -31,7 +31,7 @@ class BodegaRepository:
         if not bodega:
             return 0
         query = select(func.count()).where(
-            Equipment.sede == bodega.sede,
+            Equipment.bodega_id == bodega_id,
             Equipment.is_active.is_(True),
         )
         if dominios_permitidos is not None:
@@ -46,7 +46,7 @@ class BodegaRepository:
             return []
         query = (
             select(Equipment)
-            .where(Equipment.sede == bodega.sede, Equipment.is_active.is_(True))
+            .where(Equipment.bodega_id == bodega_id, Equipment.is_active.is_(True))
         )
         if dominios_permitidos is not None:
             query = query.where(Equipment.dominio.in_(dominios_permitidos))
