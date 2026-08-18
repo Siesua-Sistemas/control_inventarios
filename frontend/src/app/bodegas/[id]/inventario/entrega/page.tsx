@@ -116,6 +116,21 @@ export default function EntregaBodegaPage() {
     .slice()
     .sort((a, b) => a.codigo_interno.localeCompare(b.codigo_interno));
 
+  // Agrupar por ubicación física para poder hacer la revisión recorriendo el espacio zona por zona
+  const SIN_UBICACION = 'Sin ubicación';
+  const gruposUbicacion = new Map<string, EquipmentRow[]>();
+  for (const eq of topLevelEquipos) {
+    const key = eq.ubicacion?.trim() || SIN_UBICACION;
+    const arr = gruposUbicacion.get(key) ?? [];
+    arr.push(eq);
+    gruposUbicacion.set(key, arr);
+  }
+  const ubicacionesOrdenadas = [...gruposUbicacion.keys()].sort((a, b) => {
+    if (a === SIN_UBICACION) return 1;
+    if (b === SIN_UBICACION) return -1;
+    return a.localeCompare(b);
+  });
+
   const toggleCheck = (equipoId: number) => {
     setChecked((prev) => {
       const next = new Set(prev);
@@ -481,15 +496,25 @@ export default function EntregaBodegaPage() {
             </div>
 
             <div className="divide-y-0">
-              {topLevelEquipos.map((eq) => {
-                const children = childrenByParent.get(eq.id) ?? [];
-                return (
-                  <div key={eq.id}>
-                    {renderEquipoRow(eq, false, children.length)}
-                    {children.map((child) => renderEquipoRow(child, true))}
+              {ubicacionesOrdenadas.map((ubic) => (
+                <div key={ubic}>
+                  <div className="border-y border-slate-200 bg-slate-100 px-6 py-1.5 text-xs font-bold uppercase tracking-wider text-slate-500 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-400">
+                    📍 {ubic}
+                    <span className="ml-1.5 font-normal normal-case text-slate-400 dark:text-slate-500">
+                      ({gruposUbicacion.get(ubic)!.length})
+                    </span>
                   </div>
-                );
-              })}
+                  {gruposUbicacion.get(ubic)!.map((eq) => {
+                    const children = childrenByParent.get(eq.id) ?? [];
+                    return (
+                      <div key={eq.id}>
+                        {renderEquipoRow(eq, false, children.length)}
+                        {children.map((child) => renderEquipoRow(child, true))}
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
             </div>
 
             <div className="bg-slate-100 border-t border-slate-200 dark:bg-slate-950 dark:border-slate-800 px-6 py-4 flex items-center justify-between gap-3">
