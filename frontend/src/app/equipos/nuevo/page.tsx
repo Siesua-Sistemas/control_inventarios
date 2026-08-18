@@ -28,16 +28,19 @@ const sectionTitle = 'flex items-center gap-2 text-xs font-semibold uppercase tr
 export default function NuevoEquipoPage() {
   const router = useRouter();
   const [form, setForm] = useState<EquipmentPayload>({ ...EMPTY });
-  const [bodegas, setBodegas] = useState<BodegaRow[]>([]);
+  const [allBodegas, setAllBodegas] = useState<BodegaRow[]>([]);
   const [allTipos, setAllTipos] = useState<EquipmentTipo[]>([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
   const tipos = allTipos.filter((t) => t.dominio === form.dominio);
+  // Cada sede tiene una bodega por dominio (IT/Bioingeniería/General) con el mismo
+  // nombre; filtrar por el dominio del equipo evita mostrarlas duplicadas.
+  const bodegas = allBodegas.filter((b) => b.dominio === form.dominio);
 
   useEffect(() => {
     if (!isAuthenticated()) { router.replace('/login'); return; }
-    listBodegas().then((r) => setBodegas(r.items)).catch(() => null);
+    listBodegas().then((r) => setAllBodegas(r.items)).catch(() => null);
     listEquipmentTipos().then((r) => {
       const active = r.items.filter((t) => t.activo);
       setAllTipos(active);
@@ -49,6 +52,12 @@ export default function NuevoEquipoPage() {
       setForm((prev) => ({ ...prev, tipo: tipos[0].nombre }));
     }
   }, [form.dominio, tipos.length]);
+
+  useEffect(() => {
+    if (form.bodega_id && !bodegas.some((b) => b.id === form.bodega_id)) {
+      setForm((prev) => ({ ...prev, bodega_id: null, sede: '', estado: 'Disponible' }));
+    }
+  }, [form.dominio, bodegas.length]);
 
   function set(field: keyof EquipmentPayload, value: string | null) {
     setForm((prev) => ({ ...prev, [field]: value === '' ? null : value }));

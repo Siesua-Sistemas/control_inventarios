@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 
 import { DatePickerPresets } from '@/components/date-picker-presets';
 import { NavBar } from '@/components/nav-bar';
-import { getEquipment, isAuthenticated, listEquipmentTipos, updateEquipment, type EquipmentPayload, type EquipmentTipo } from '@/lib/api';
+import { getEquipment, isAuthenticated, listBodegas, listEquipmentTipos, updateEquipment, type BodegaRow, type EquipmentPayload, type EquipmentTipo } from '@/lib/api';
 
 const ESTADOS = ['Disponible', 'Asignado', 'En mantenimiento', 'Dañado', 'Prestado', 'En bodega', 'Perdido', 'Dado de baja'];
 const CRITICIDADES = ['Alta', 'Media', 'Baja'];
@@ -23,11 +23,15 @@ export default function EditarEquipoPage() {
   const [form, setForm] = useState<EquipmentPayload | null>(null);
   const [codigoInterno, setCodigoInterno] = useState('');
   const [allTipos, setAllTipos] = useState<EquipmentTipo[]>([]);
+  const [allBodegas, setAllBodegas] = useState<BodegaRow[]>([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
 
   const tipos = allTipos.filter((t) => !form || t.dominio === form.dominio);
+  // Cada sede tiene una bodega por dominio (IT/Bioingeniería/General) con el mismo
+  // nombre; filtrar por el dominio del equipo evita mostrarlas duplicadas.
+  const bodegas = allBodegas.filter((b) => !form || b.dominio === form.dominio);
 
   useEffect(() => {
     if (!isAuthenticated()) { router.replace('/login'); return; }
@@ -50,13 +54,32 @@ export default function EditarEquipoPage() {
         listEquipmentTipos().then((r) => {
           setAllTipos(r.items.filter((t) => t.activo || t.nombre === data.tipo));
         }).catch(() => null);
+        listBodegas().then((r) => setAllBodegas(r.items)).catch(() => null);
       })
       .catch(() => setError('No se pudo cargar el equipo'))
       .finally(() => setFetching(false));
   }, [id, router]);
 
+  useEffect(() => {
+    if (form?.bodega_id && !bodegas.some((b) => b.id === form.bodega_id)) {
+      setForm((prev) => prev ? { ...prev, bodega_id: null } : prev);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form?.dominio, bodegas.length]);
+
   function set(field: keyof EquipmentPayload, value: string | null) {
     setForm((prev) => prev ? { ...prev, [field]: value === '' ? null : value } : prev);
+  }
+
+  function handleBodegaChange(bodegaId: string) {
+    if (!bodegaId) {
+      setForm((prev) => prev ? { ...prev, bodega_id: null } : prev);
+      return;
+    }
+    const bodega = bodegas.find((b) => b.id === Number(bodegaId));
+    if (bodega) {
+      setForm((prev) => prev ? { ...prev, bodega_id: bodega.id, sede: bodega.sede } : prev);
+    }
   }
 
   async function handleSubmit(event: React.FormEvent) {
@@ -83,6 +106,8 @@ export default function EditarEquipoPage() {
       </>
     );
   }
+
+  const selectedBodega = bodegas.find((b) => b.id === form?.bodega_id);
 
   if (!form) {
     return (
@@ -157,9 +182,22 @@ export default function EditarEquipoPage() {
               Ubicación
             </h2>
             <div className="grid gap-5 sm:grid-cols-2">
-              <div className={fieldClass}>
-                <label htmlFor="sede" className={labelClass}>Sede *</label>
-                <input id="sede" className="w-full" value={form.sede} onChange={(e) => set('sede', e.target.value)} required />
+              <div className={`${fieldClass} sm:col-span-2`}>
+                <label htmlFor="bodega" className={labelClass}>Bodega</label>
+                <select
+                  id="bodega"
+                  className="w-full"
+                  value={form.bodega_id ?? ''}
+                  onChange={(e) => handleBodegaChange(e.target.value)}
+                >
+                  <option value="">— Sin bodega (equipo asignado a un empleado) —</option>
+                  {bodegas.map((b) => (
+                    <option key={b.id} value={b.id}>{b.nombre} · {b.sede}</option>
+                  ))}
+                </select>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Sede: <span className="font-medium text-slate-700 dark:text-slate-300">{selectedBodega ? selectedBodega.sede : form.sede || '—'}</span>
+                </p>
               </div>
               <div className={fieldClass}>
                 <label htmlFor="ubicacion" className={labelClass}>Ubicación física</label>
