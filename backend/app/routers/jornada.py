@@ -166,6 +166,7 @@ class RegistroJornadaOut(BaseModel):
     ip_publica: str | None
     dispositivo: str | None
     is_manual: bool = False
+    ubicacion_no_verificada: bool = False
 
     @field_validator('timestamp', mode='before')
     @classmethod
@@ -428,6 +429,10 @@ async def registrar_jornada(
         longitud=longitud,
         ip_publica=ip_actual,
         dispositivo=dispositivo,
+        # No se pudo confirmar la ubicación por IP ni GPS. Para entrada esto ya
+        # bloquea el registro (salvo que no haya sedes configuradas); para salida
+        # no bloquea, pero queda marcado para que Gestión Humana lo revise.
+        ubicacion_no_verificada=sede_detectada is None,
     )
     db.add(registro)
     db.commit()

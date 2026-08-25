@@ -301,6 +301,14 @@ function ModalDia({
                       )}
                     </div>
                     <span className="flex shrink-0 items-center gap-1.5">
+                      {r.ubicacion_no_verificada && (
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
+                          className="h-3.5 w-3.5 text-amber-500 dark:text-amber-400"
+                          aria-label="No se pudo verificar la ubicación (IP ni GPS) al registrar">
+                          <title>No se pudo verificar la ubicación (IP ni GPS) al registrar</title>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                        </svg>
+                      )}
                       {r.is_manual && (
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
                           className="h-3.5 w-3.5 text-violet-500 dark:text-violet-400"
@@ -536,6 +544,7 @@ function DiaCell({
   const sedesUnicas = new Set(dia.registros.filter((r) => r.sede).map((r) => r.sede as string));
   const multipleSedes = sedesUnicas.size > 1 || sedeDiferente;
   const tieneSalidaManual = salidas.some((r) => r.is_manual);
+  const tieneUbicacionNoVerificada = dia.registros.some((r) => r.ubicacion_no_verificada);
   const esPrincipal = !multipleCiclos && !multipleSedes && !tieneSalidaManual;
 
   if (primerEntrada && ultimaSalida && dia.tiempo_sede) {
@@ -561,21 +570,25 @@ function DiaCell({
           onClick={onSelect}
           className={`relative w-full rounded-lg px-1.5 py-1.5 text-left transition-opacity hover:opacity-80 ${colorBg}`}
         >
-          {/* Ícono de pin arriba a la derecha cuando hay múltiples sedes */}
-          {multipleSedes && (
-            <span className="absolute right-1 top-1">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="h-2.5 w-2.5 text-cyan-500 dark:text-cyan-400">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" />
-                <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" />
-              </svg>
-            </span>
-          )}
-          {/* Ícono de llave arriba a la derecha cuando la salida es manual */}
-          {tieneSalidaManual && (
-            <span className="absolute right-1 top-1">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="h-2.5 w-2.5 text-violet-500 dark:text-violet-400">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z" />
-              </svg>
+          {/* Íconos arriba a la derecha: múltiples sedes / salida manual / ubicación no verificada */}
+          {(multipleSedes || tieneSalidaManual || tieneUbicacionNoVerificada) && (
+            <span className="absolute right-1 top-1 flex items-center gap-0.5">
+              {multipleSedes && (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="h-2.5 w-2.5 text-cyan-500 dark:text-cyan-400">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" />
+                </svg>
+              )}
+              {tieneSalidaManual && (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="h-2.5 w-2.5 text-violet-500 dark:text-violet-400">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z" />
+                </svg>
+              )}
+              {tieneUbicacionNoVerificada && (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="h-2.5 w-2.5 text-amber-500 dark:text-amber-400">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                </svg>
+              )}
             </span>
           )}
           <p className={`text-[11px] font-semibold ${colorText}`}>
@@ -600,14 +613,30 @@ function DiaCell({
   }
 
   // Solo entrada sin salida
+  if (primerEntrada) {
+    return (
+      <td className="border border-slate-100 px-1.5 py-1.5 text-center dark:border-slate-800">
+        <button
+          onClick={onSelect}
+          className="w-full rounded-lg bg-amber-50 px-1.5 py-1.5 text-left hover:opacity-80 dark:bg-amber-900/20"
+        >
+          <p className="text-[10px] font-semibold text-amber-700 dark:text-amber-400">↗ {formatHora(primerEntrada.timestamp)}</p>
+          <p className="text-[10px] text-amber-500/70 dark:text-amber-500">sin salida</p>
+        </button>
+      </td>
+    );
+  }
+
+  // Solo salida sin entrada en esta sede — pasa cuando el filtro de sede oculta la
+  // entrada porque se registró en otra sede (empleado entró en A y salió en B)
   return (
     <td className="border border-slate-100 px-1.5 py-1.5 text-center dark:border-slate-800">
       <button
         onClick={onSelect}
-        className="w-full rounded-lg bg-amber-50 px-1.5 py-1.5 text-left hover:opacity-80 dark:bg-amber-900/20"
+        className="w-full rounded-lg bg-slate-100 px-1.5 py-1.5 text-left hover:opacity-80 dark:bg-slate-800"
       >
-        <p className="text-[10px] font-semibold text-amber-700 dark:text-amber-400">↗ {formatHora(primerEntrada!.timestamp)}</p>
-        <p className="text-[10px] text-amber-500/70 dark:text-amber-500">sin salida</p>
+        <p className="text-[10px] font-semibold text-slate-600 dark:text-slate-300">↙ {formatHora(ultimaSalida!.timestamp)}</p>
+        <p className="text-[10px] text-slate-400 dark:text-slate-500">sin entrada (otra sede)</p>
       </button>
     </td>
   );
@@ -1320,6 +1349,12 @@ export default function ReporteSemanalPage() {
                   <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z" />
                 </svg>
                 Salida manual (admin)
+              </span>
+              <span className="flex items-center gap-1.5">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="h-3 w-3 text-amber-500">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                </svg>
+                Ubicación no verificada (IP ni GPS)
               </span>
             </div>
           )}

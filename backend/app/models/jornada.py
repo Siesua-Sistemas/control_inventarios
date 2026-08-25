@@ -20,6 +20,7 @@ class RegistroJornada(Base):
     ip_publica = Column(String(45), nullable=True)
     dispositivo = Column(String(300), nullable=True)
     is_manual = Column(Boolean, default=False, server_default='false', nullable=False)
+    ubicacion_no_verificada = Column(Boolean, default=False, server_default='false', nullable=False)
 
 
 class AlmuerzoManual(Base):

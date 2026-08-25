@@ -1656,6 +1656,7 @@ export interface RegistroJornadaOut {
   ip_publica: string | null;
   dispositivo: string | null;
   is_manual: boolean;
+  ubicacion_no_verificada: boolean;
 }
 
 export interface SedeInfoOut {

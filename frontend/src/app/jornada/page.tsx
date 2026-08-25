@@ -497,22 +497,23 @@ function JornadaContent() {
   const proximo = data.proximo;
   const isEntrada = proximo === 'entrada';
 
-  // Salida: sin restricción de ubicación (no bloquear, no mostrar geovalla)
-  // Entrada: IP primero, luego GPS con geovalla
+  // IP primero, luego GPS con geovalla. Se calcula igual para entrada y salida:
+  // en salida NO bloquea el registro, pero sí se muestra y se marca como novedad.
   const ipOk = data.ip_verificada;
   // Geovalla usa todas las sedes activas: si el empleado fue enviado a cubrir otra sede
   // sin actualizar su perfil, el GPS lo ubica en esa sede y no lo bloquea
   const sedesParaGeo = (data.todas_sedes_info?.length ? data.todas_sedes_info : data.sedes_info) ?? [];
-  const geoResult = !isEntrada
-    ? { estado: 'sin-config' as GeovallaEstado, distancia: null, sedeActual: null }
-    : ipOk
+  const geoResult = ipOk
     ? { estado: 'ip-ok' as GeovallaEstado, distancia: null, sedeActual: null }
     : calcGeovalla(gpsEstado, coords, sedesParaGeo);
   const geovallaEstado = geoResult.estado;
   const sedeActual = geoResult.sedeActual;
-  // Sin IP autorizada: bloquear tanto si está fuera de rango como si no se pudo obtener el GPS
-  // (sin esto, denegar/perder la ubicación dejaba pasar el registro sin ninguna validación)
-  const bloqueado = isEntrada && !ipOk && (geovallaEstado === 'fuera' || geovallaEstado === 'sin-gps');
+  const sinVerificar = !ipOk && (geovallaEstado === 'fuera' || geovallaEstado === 'sin-gps');
+  // Sin IP autorizada: bloquear la ENTRADA tanto si está fuera de rango como si no se pudo
+  // obtener el GPS (sin esto, denegar/perder la ubicación dejaba pasar el registro sin
+  // ninguna validación). La salida nunca se bloquea, solo se marca como novedad.
+  const bloqueado = isEntrada && sinVerificar;
+  const salidaSinVerificar = !isEntrada && sinVerificar;
 
   return (
     <main className="min-h-screen bg-slate-50 dark:bg-slate-950">
@@ -558,14 +559,12 @@ function JornadaContent() {
 
           {/* Controles */}
           <div className="space-y-3 border-t border-slate-100 p-4 dark:border-slate-800">
-            {/* Estado geovalla — solo para entrada */}
-            {isEntrada && (
-              <div className="flex justify-center">
-                <GeovallaBadge estado={geovallaEstado} sedeActual={sedeActual} />
-              </div>
-            )}
+            {/* Estado geovalla */}
+            <div className="flex justify-center">
+              <GeovallaBadge estado={geovallaEstado} sedeActual={sedeActual} />
+            </div>
 
-            {/* Mensaje fuera de rango / sin GPS */}
+            {/* Mensaje fuera de rango / sin GPS — bloquea solo la entrada */}
             {bloqueado && (
               <p className="rounded-xl bg-red-50 px-4 py-3 text-center text-sm text-red-700 dark:bg-red-900/20 dark:text-red-300">
                 {geovallaEstado === 'sin-gps'
@@ -576,6 +575,13 @@ function JornadaContent() {
                       <strong>{sedeActual?.nombre ?? 'la sede asignada'}</strong>.
                     </>
                   )}
+              </p>
+            )}
+
+            {/* Aviso no bloqueante — la salida siempre se permite, pero queda marcada */}
+            {salidaSinVerificar && (
+              <p className="rounded-xl bg-amber-50 px-4 py-3 text-center text-sm text-amber-700 dark:bg-amber-900/20 dark:text-amber-300">
+                ⚠ No pudimos verificar tu ubicación
               </p>
             )}
 

@@ -198,6 +198,7 @@ def _run_migrations() -> None:
         conn.execute(text('ALTER TABLE registros_jornada ADD COLUMN IF NOT EXISTS ip_publica VARCHAR(45)'))
         conn.execute(text('ALTER TABLE registros_jornada ADD COLUMN IF NOT EXISTS dispositivo VARCHAR(300)'))
         conn.execute(text('ALTER TABLE registros_jornada ADD COLUMN IF NOT EXISTS is_manual BOOLEAN NOT NULL DEFAULT false'))
+        conn.execute(text('ALTER TABLE registros_jornada ADD COLUMN IF NOT EXISTS ubicacion_no_verificada BOOLEAN NOT NULL DEFAULT false'))
         # Fase 2 — sedes con geovalla
         conn.execute(text("""
             CREATE TABLE IF NOT EXISTS sedes_jornada (
