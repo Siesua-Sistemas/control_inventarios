@@ -40,6 +40,7 @@ const NAV_ITEMS: NavItem[] = [
     { href: '/credenciales', label: 'Credenciales', permission: 'credenciales:read' },
     { href: '/jornada/dashboard', label: 'Asistencia', permission: 'jornada:read' },
     { href: '/jornada/reporte', label: 'Reporte semanal', permission: 'jornada:read' },
+    { href: '/jornada/reporte-mensual', label: 'Reporte mensual', permission: 'jornada:read' },
     { href: '/jornada/admin/sedes', label: 'Ubicaciones', permission: 'jornada:admin' },
   ]},
   { label: 'Mi espacio', links: [

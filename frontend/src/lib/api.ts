@@ -1782,6 +1782,36 @@ export async function getReporteSemanal(fecha?: string, sedeId?: number): Promis
   return apiRequest(`/api/v1/jornada/admin/reporte-semanal${qs}`);
 }
 
+export interface EmpleadoMesOut {
+  empleado_id: number;
+  nombres: string;
+  apellidos: string;
+  cargo: string | null;
+  sede: string | null;
+  dias: DiaRegistros[];
+  dias_asistidos: number;
+  dias_incompletos: number;
+  dias_ausentes: number;
+  total_minutos: number;
+  novedades_manuales: number;
+  novedades_ubicacion: number;
+}
+
+export interface ReporteMensualOut {
+  mes: string;
+  mes_inicio: string;
+  mes_fin: string;
+  empleados: EmpleadoMesOut[];
+}
+
+export async function getReporteMensual(mes?: string, sedeId?: number): Promise<ReporteMensualOut> {
+  const p = new URLSearchParams();
+  if (mes) p.set('mes', mes);
+  if (sedeId) p.set('sede_id', String(sedeId));
+  const qs = p.size ? '?' + p.toString() : '';
+  return apiRequest(`/api/v1/jornada/admin/reporte-mensual${qs}`);
+}
+
 // ── Sedes Jornada (admin) ─────────────────────────────────────────────────────
 
 export interface HorarioConfig {

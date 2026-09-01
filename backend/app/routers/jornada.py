@@ -1199,6 +1199,176 @@ def reporte_semanal(
     )
 
 
+# ── Reporte mensual ─────────────────────────────────────────────────────────────
+
+class EmpleadoMesOut(BaseModel):
+    empleado_id: int
+    nombres: str
+    apellidos: str
+    cargo: str | None
+    sede: str | None
+    dias: list[DiaRegistros]
+    dias_asistidos: int     # días con entrada + salida
+    dias_incompletos: int   # días con solo entrada
+    dias_ausentes: int      # días transcurridos del mes sin ningún registro
+    total_minutos: int
+    novedades_manuales: int    # registros is_manual=True en el mes
+    novedades_ubicacion: int   # registros ubicacion_no_verificada=True en el mes
+
+
+class ReporteMensualOut(BaseModel):
+    mes: str          # "2026-08"
+    mes_inicio: str   # "2026-08-01"
+    mes_fin: str      # "2026-08-31"
+    empleados: list[EmpleadoMesOut]
+
+
+@router.get('/admin/reporte-mensual', response_model=ReporteMensualOut)
+def reporte_mensual(
+    mes: str | None = Query(None, description='Mes en formato YYYY-MM'),
+    sede_id: int | None = Query(None),
+    db: Session = Depends(get_db),
+    _user=Depends(require_permissions('jornada:read')),
+):
+    hoy_bog = _bogota_now().date()
+    try:
+        year, month = (int(p) for p in mes.split('-')) if mes else (hoy_bog.year, hoy_bog.month)
+    except ValueError:
+        year, month = hoy_bog.year, hoy_bog.month
+
+    primer_dia = date(year, month, 1)
+    ultimo_dia_num = calendar.monthrange(year, month)[1]
+    ultimo_dia = date(year, month, ultimo_dia_num)
+    # No contar días futuros si el mes consultado es el mes en curso
+    tope_dia = min(ultimo_dia, hoy_bog) if (year, month) == (hoy_bog.year, hoy_bog.month) else ultimo_dia
+    mes_str = f'{year:04d}-{month:02d}'
+
+    sede_nombre_filter: str | None = None
+    if sede_id:
+        sede_obj = db.scalar(select(SedeJornada).where(SedeJornada.id == sede_id))
+        if sede_obj:
+            sede_nombre_filter = sede_obj.nombre
+
+    empleados = list(db.scalars(
+        select(Empleado)
+        .where(Empleado.en_jornada.is_(True), Empleado.is_active.is_(True))
+        .order_by(Empleado.apellidos, Empleado.nombres)
+    ).all())
+
+    if not empleados:
+        return ReporteMensualOut(
+            mes=mes_str, mes_inicio=primer_dia.isoformat(), mes_fin=ultimo_dia.isoformat(), empleados=[],
+        )
+
+    emp_ids = [e.id for e in empleados]
+    inicio_utc = datetime(primer_dia.year, primer_dia.month, primer_dia.day) - BOGOTA_OFFSET
+    fin_utc = datetime(ultimo_dia.year, ultimo_dia.month, ultimo_dia.day) + timedelta(days=1) - BOGOTA_OFFSET
+
+    todos = list(db.scalars(
+        select(RegistroJornada)
+        .where(
+            RegistroJornada.empleado_id.in_(emp_ids),
+            RegistroJornada.timestamp >= inicio_utc,
+            RegistroJornada.timestamp < fin_utc,
+        )
+        .order_by(RegistroJornada.timestamp.asc())
+    ).all())
+
+    if sede_nombre_filter:
+        ids_con_sede = {r.empleado_id for r in todos if r.sede == sede_nombre_filter}
+        empleados = [e for e in empleados if e.id in ids_con_sede]
+        if not empleados:
+            return ReporteMensualOut(
+                mes=mes_str, mes_inicio=primer_dia.isoformat(), mes_fin=ultimo_dia.isoformat(), empleados=[],
+            )
+
+    by_emp: dict[int, list] = defaultdict(list)
+    for r in todos:
+        by_emp[r.empleado_id].append(r)
+
+    horarios = _horarios_por_nombre(db)
+    overrides = _almuerzo_overrides(db, emp_ids, primer_dia, ultimo_dia)
+    num_dias = (tope_dia - primer_dia).days + 1
+    resultado: list[EmpleadoMesOut] = []
+
+    for emp in empleados:
+        emp_regs = by_emp.get(emp.id, [])
+        dias: list[DiaRegistros] = []
+        total_min = 0
+        dias_asistidos = 0
+        dias_incompletos = 0
+        dias_ausentes = 0
+        novedades_manuales = 0
+        novedades_ubicacion = 0
+
+        for i in range(num_dias):
+            fecha_dia = primer_dia + timedelta(days=i)
+            regs_dia = [r for r in emp_regs if (r.timestamp + BOGOTA_OFFSET).date() == fecha_dia]
+            regs = [r for r in regs_dia if r.sede == sede_nombre_filter] if sede_nombre_filter else regs_dia
+
+            novedades_manuales += sum(1 for r in regs if r.is_manual)
+            novedades_ubicacion += sum(1 for r in regs if r.ubicacion_no_verificada)
+
+            entradas_ord = sorted([r for r in regs if r.tipo == 'entrada'], key=lambda r: r.timestamp)
+            salidas_ord = sorted([r for r in regs if r.tipo == 'salida'], key=lambda r: r.timestamp)
+            pares = min(len(entradas_ord), len(salidas_ord))
+            bruto_min = sum(
+                max(0, round((salidas_ord[j].timestamp - entradas_ord[j].timestamp).total_seconds() / 60))
+                for j in range(pares)
+            )
+
+            tiempo_sede = None
+            almuerzo_min = 0
+            override = overrides.get((emp.id, fecha_dia))
+            if pares > 0:
+                if override is not None:
+                    almuerzo_min = override
+                else:
+                    sede_del_dia = regs[0].sede if regs else None
+                    horario_cfg = horarios.get(sede_del_dia) if sede_del_dia else None
+                    almuerzo_min = _almuerzo_minutos(fecha_dia, horario_cfg)
+                dia_min = max(0, bruto_min - almuerzo_min)
+                tiempo_sede = f"{dia_min // 60}h {dia_min % 60:02d}m"
+                total_min += dia_min
+                dias_asistidos += 1
+            elif entradas_ord:
+                dias_incompletos += 1
+            else:
+                dias_ausentes += 1
+
+            dias.append(DiaRegistros(
+                fecha=fecha_dia.isoformat(),
+                dia_semana=_DIAS_ES[fecha_dia.weekday()],
+                es_hoy=(fecha_dia == hoy_bog),
+                registros=[RegistroJornadaOut.model_validate(r) for r in regs],
+                tiempo_sede=tiempo_sede,
+                almuerzo_min=almuerzo_min,
+                almuerzo_manual=override is not None,
+            ))
+
+        resultado.append(EmpleadoMesOut(
+            empleado_id=emp.id,
+            nombres=emp.nombres,
+            apellidos=emp.apellidos,
+            cargo=emp.cargo,
+            sede=emp.sede,
+            dias=dias,
+            dias_asistidos=dias_asistidos,
+            dias_incompletos=dias_incompletos,
+            dias_ausentes=dias_ausentes,
+            total_minutos=total_min,
+            novedades_manuales=novedades_manuales,
+            novedades_ubicacion=novedades_ubicacion,
+        ))
+
+    return ReporteMensualOut(
+        mes=mes_str,
+        mes_inicio=primer_dia.isoformat(),
+        mes_fin=ultimo_dia.isoformat(),
+        empleados=resultado,
+    )
+
+
 @router.get('/empleado/{empleado_id}/registros', response_model=list[RegistroJornadaOut])
 def get_registros_empleado(
     empleado_id: int,
