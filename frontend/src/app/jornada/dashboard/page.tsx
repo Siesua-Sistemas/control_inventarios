@@ -217,11 +217,23 @@ function DetalleModal({
                             </span>
                             <span className="font-mono text-sm text-slate-500">{formatHora(r.timestamp)}</span>
                           </div>
-                          <div className="mt-0.5 flex flex-wrap gap-2 text-xs text-slate-400">
-                            {r.latitud && (
-                              <span>📍 {r.latitud.toFixed(5)}, {r.longitud?.toFixed(5)}</span>
+                          <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-slate-400">
+                            {r.latitud != null && r.longitud != null && (
+                              <a
+                                href={`https://www.google.com/maps?q=${r.latitud},${r.longitud}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="underline decoration-dotted hover:text-cyan-600 dark:hover:text-cyan-400"
+                              >
+                                📍 {r.latitud.toFixed(5)}, {r.longitud.toFixed(5)}
+                              </a>
                             )}
                             {r.ip_publica && <span>🌐 {r.ip_publica}</span>}
+                            {r.ubicacion_no_verificada && (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-1.5 py-0.5 font-semibold text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                                ⚠ {r.latitud != null ? 'Fuera de sede' : 'Sin GPS ni IP verificada'}
+                              </span>
+                            )}
                           </div>
                           {r.dispositivo && (
                             <p className="mt-0.5 text-xs text-slate-400 truncate max-w-[240px]">

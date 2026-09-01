@@ -393,8 +393,16 @@ async def registrar_jornada(
                 detail='No se pudo verificar tu ubicación. Activa el GPS en tu navegador e inténtalo de nuevo.',
             )
     else:
-        # Salida: sin restricción, detectar sede para el registro (asignadas primero, luego todas)
+        # Salida: se permite aunque quede fuera de rango (queda marcada con novedad),
+        # pero requiere al menos UNA señal de ubicación real (IP autorizada o GPS,
+        # así esté fuera de rango). Sin IP válida y sin ninguna lectura de GPS no hay
+        # nada que registrar como evidencia, así que se bloquea igual que la entrada.
         sede_detectada = _detectar_sede(sedes_conf) or _detectar_sede(todas_sedes)
+        if sede_detectada is None and latitud is None and longitud is None:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail='No se pudo verificar tu ubicación. Activa el GPS en tu navegador e inténtalo de nuevo.',
+            )
 
     # Actualizar sede de bodega
     if tipo_final == 'entrada' and sede_detectada:

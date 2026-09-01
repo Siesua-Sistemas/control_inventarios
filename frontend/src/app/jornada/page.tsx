@@ -497,8 +497,7 @@ function JornadaContent() {
   const proximo = data.proximo;
   const isEntrada = proximo === 'entrada';
 
-  // IP primero, luego GPS con geovalla. Se calcula igual para entrada y salida:
-  // en salida NO bloquea el registro, pero sí se muestra y se marca como novedad.
+  // IP primero, luego GPS con geovalla. Se calcula igual para entrada y salida.
   const ipOk = data.ip_verificada;
   // Geovalla usa todas las sedes activas: si el empleado fue enviado a cubrir otra sede
   // sin actualizar su perfil, el GPS lo ubica en esa sede y no lo bloquea
@@ -508,12 +507,14 @@ function JornadaContent() {
     : calcGeovalla(gpsEstado, coords, sedesParaGeo);
   const geovallaEstado = geoResult.estado;
   const sedeActual = geoResult.sedeActual;
-  const sinVerificar = !ipOk && (geovallaEstado === 'fuera' || geovallaEstado === 'sin-gps');
-  // Sin IP autorizada: bloquear la ENTRADA tanto si está fuera de rango como si no se pudo
-  // obtener el GPS (sin esto, denegar/perder la ubicación dejaba pasar el registro sin
-  // ninguna validación). La salida nunca se bloquea, solo se marca como novedad.
-  const bloqueado = isEntrada && sinVerificar;
-  const salidaSinVerificar = !isEntrada && sinVerificar;
+  // Sin ninguna señal de ubicación (ni IP autorizada ni GPS): bloquea tanto entrada como
+  // salida, porque no quedaría ninguna evidencia de dónde se hizo el registro.
+  const sinNingunaSenal = !ipOk && geovallaEstado === 'sin-gps';
+  // Fuera de rango pero CON GPS: bloquea solo la entrada. La salida se permite y queda
+  // marcada como novedad (sí hay evidencia de ubicación, solo que fuera del radio).
+  const fueraDeRangoEntrada = isEntrada && !ipOk && geovallaEstado === 'fuera';
+  const bloqueado = sinNingunaSenal || fueraDeRangoEntrada;
+  const salidaSinVerificar = !isEntrada && !ipOk && geovallaEstado === 'fuera';
 
   return (
     <main className="min-h-screen bg-slate-50 dark:bg-slate-950">
@@ -564,11 +565,11 @@ function JornadaContent() {
               <GeovallaBadge estado={geovallaEstado} sedeActual={sedeActual} />
             </div>
 
-            {/* Mensaje fuera de rango / sin GPS — bloquea solo la entrada */}
+            {/* Mensaje bloqueado — sin GPS bloquea entrada y salida; fuera de rango solo entrada */}
             {bloqueado && (
               <p className="rounded-xl bg-red-50 px-4 py-3 text-center text-sm text-red-700 dark:bg-red-900/20 dark:text-red-300">
                 {geovallaEstado === 'sin-gps'
-                  ? 'Activa la ubicación (GPS) en tu navegador para poder registrar tu entrada.'
+                  ? `Activa la ubicación (GPS) en tu navegador para poder registrar tu ${isEntrada ? 'entrada' : 'salida'}.`
                   : (
                     <>
                       Debes estar a menos de {sedeActual?.radio_metros ?? 100} m de{' '}
