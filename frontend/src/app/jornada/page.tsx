@@ -507,14 +507,12 @@ function JornadaContent() {
     : calcGeovalla(gpsEstado, coords, sedesParaGeo);
   const geovallaEstado = geoResult.estado;
   const sedeActual = geoResult.sedeActual;
-  // Sin ninguna señal de ubicación (ni IP autorizada ni GPS): bloquea tanto entrada como
-  // salida, porque no quedaría ninguna evidencia de dónde se hizo el registro.
+  // Sin ninguna señal de ubicación (ni IP autorizada ni GPS), o con GPS pero fuera del
+  // radio de la sede: bloquea tanto entrada como salida por igual. Solo se permite
+  // marcar si hay IP autorizada o GPS dentro de una sede autorizada.
   const sinNingunaSenal = !ipOk && geovallaEstado === 'sin-gps';
-  // Fuera de rango pero CON GPS: bloquea solo la entrada. La salida se permite y queda
-  // marcada como novedad (sí hay evidencia de ubicación, solo que fuera del radio).
-  const fueraDeRangoEntrada = isEntrada && !ipOk && geovallaEstado === 'fuera';
-  const bloqueado = sinNingunaSenal || fueraDeRangoEntrada;
-  const salidaSinVerificar = !isEntrada && !ipOk && geovallaEstado === 'fuera';
+  const fueraDeRango = !ipOk && geovallaEstado === 'fuera';
+  const bloqueado = sinNingunaSenal || fueraDeRango;
 
   return (
     <main className="min-h-screen bg-slate-50 dark:bg-slate-950">
@@ -565,7 +563,7 @@ function JornadaContent() {
               <GeovallaBadge estado={geovallaEstado} sedeActual={sedeActual} />
             </div>
 
-            {/* Mensaje bloqueado — sin GPS bloquea entrada y salida; fuera de rango solo entrada */}
+            {/* Mensaje bloqueado — sin IP autorizada ni GPS en zona autorizada, bloquea entrada y salida por igual */}
             {bloqueado && (
               <p className="rounded-xl bg-red-50 px-4 py-3 text-center text-sm text-red-700 dark:bg-red-900/20 dark:text-red-300">
                 {geovallaEstado === 'sin-gps'
@@ -578,14 +576,6 @@ function JornadaContent() {
                   )}
               </p>
             )}
-
-            {/* Aviso no bloqueante — la salida siempre se permite, pero queda marcada */}
-            {salidaSinVerificar && (
-              <p className="rounded-xl bg-amber-50 px-4 py-3 text-center text-sm text-amber-700 dark:bg-amber-900/20 dark:text-amber-300">
-                ⚠ No pudimos verificar tu ubicación
-              </p>
-            )}
-
 
             {regError && (
               <p className="rounded-md bg-red-100 px-3 py-2 text-center text-sm text-red-700 dark:bg-red-500/20 dark:text-red-200">

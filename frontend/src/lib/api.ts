@@ -1744,7 +1744,21 @@ export interface DiaRegistros {
   tiempo_sede: string | null;
   almuerzo_min: number;
   almuerzo_manual: boolean;
+  recargos: Record<string, number>;
+  extra_min: number;
+  excede_diario: boolean;
 }
+
+export const RECARGO_CATEGORIAS: { clave: string; label: string; franja: string }[] = [
+  { clave: 'ordinaria_diurna', label: 'Ordinaria diurna', franja: 'Lun–Sáb, 6 a. m.–7 p. m.' },
+  { clave: 'ordinaria_nocturna', label: 'Ordinaria nocturna', franja: 'Lun–Sáb, 7 p. m.–6 a. m.' },
+  { clave: 'extra_diurna', label: 'Extra diurna', franja: 'Más allá de la jornada, 6 a. m.–7 p. m.' },
+  { clave: 'extra_nocturna', label: 'Extra nocturna', franja: 'Más allá de la jornada, 7 p. m.–6 a. m.' },
+  { clave: 'dominical_diurno', label: 'Dominical/festivo diurno', franja: 'Dom/festivo, 6 a. m.–7 p. m.' },
+  { clave: 'dominical_nocturno', label: 'Dominical/festivo nocturno', franja: 'Dom/festivo, 7 p. m.–6 a. m.' },
+  { clave: 'extra_dominical_diurno', label: 'Extra dominical/festivo diurno', franja: 'Dom/festivo + extras, 6 a. m.–7 p. m.' },
+  { clave: 'extra_dominical_nocturno', label: 'Extra dominical/festivo nocturno', franja: 'Dom/festivo + extras, 7 p. m.–6 a. m.' },
+];
 
 export interface SemanaJornadaResponse {
   dias: DiaRegistros[];
@@ -1782,6 +1796,15 @@ export async function getReporteSemanal(fecha?: string, sedeId?: number): Promis
   return apiRequest(`/api/v1/jornada/admin/reporte-semanal${qs}`);
 }
 
+export interface PeriodoExtraOut {
+  inicio: string;
+  fin: string;
+  tipo: 'semana' | 'ciclo_15d';
+  extra_min: number;
+  limite_min: number;
+  excede: boolean;
+}
+
 export interface EmpleadoMesOut {
   empleado_id: number;
   nombres: string;
@@ -1795,6 +1818,10 @@ export interface EmpleadoMesOut {
   total_minutos: number;
   novedades_manuales: number;
   novedades_ubicacion: number;
+  recargos_totales: Record<string, number>;
+  dias_excedidos: number;
+  periodos_extra: PeriodoExtraOut[];
+  periodos_excedidos: number;
 }
 
 export interface ReporteMensualOut {
@@ -1804,12 +1831,53 @@ export interface ReporteMensualOut {
   empleados: EmpleadoMesOut[];
 }
 
-export async function getReporteMensual(mes?: string, sedeId?: number): Promise<ReporteMensualOut> {
+export interface ReporteMensualParams {
+  mes?: string;      // modo "mes completo": YYYY-MM
+  desde?: string;    // modo "periodo personalizado": YYYY-MM-DD (junto con `hasta`)
+  hasta?: string;
+  sedeId?: number;
+}
+
+function _reporteMensualQS(params: ReporteMensualParams): string {
   const p = new URLSearchParams();
-  if (mes) p.set('mes', mes);
-  if (sedeId) p.set('sede_id', String(sedeId));
-  const qs = p.size ? '?' + p.toString() : '';
-  return apiRequest(`/api/v1/jornada/admin/reporte-mensual${qs}`);
+  if (params.desde && params.hasta) {
+    p.set('desde', params.desde);
+    p.set('hasta', params.hasta);
+  } else if (params.mes) {
+    p.set('mes', params.mes);
+  }
+  if (params.sedeId) p.set('sede_id', String(params.sedeId));
+  return p.size ? '?' + p.toString() : '';
+}
+
+function _etiquetaPeriodo(params: ReporteMensualParams): string {
+  if (params.desde && params.hasta) return `${params.desde}_a_${params.hasta}`;
+  return params.mes ?? 'periodo';
+}
+
+export async function getReporteMensual(params: ReporteMensualParams): Promise<ReporteMensualOut> {
+  return apiRequest(`/api/v1/jornada/admin/reporte-mensual${_reporteMensualQS(params)}`);
+}
+
+export async function exportarReporteMensualResumen(params: ReporteMensualParams): Promise<void> {
+  await downloadFile(
+    `/api/v1/jornada/admin/reporte-mensual/exportar-resumen${_reporteMensualQS(params)}`,
+    `asistencia_mensual_${_etiquetaPeriodo(params)}.xlsx`,
+  );
+}
+
+export async function exportarReporteMensualConsolidado(params: ReporteMensualParams): Promise<void> {
+  await downloadFile(
+    `/api/v1/jornada/admin/reporte-mensual/exportar-consolidado${_reporteMensualQS(params)}`,
+    `asistencia_mensual_todos_${_etiquetaPeriodo(params)}.xlsx`,
+  );
+}
+
+export async function exportarReporteMensualDetalle(empleadoId: number, params: ReporteMensualParams, filename?: string): Promise<void> {
+  await downloadFile(
+    `/api/v1/jornada/admin/reporte-mensual/exportar-detalle/${empleadoId}${_reporteMensualQS(params)}`,
+    filename ?? `asistencia_${empleadoId}_${_etiquetaPeriodo(params)}.xlsx`,
+  );
 }
 
 // ── Sedes Jornada (admin) ─────────────────────────────────────────────────────

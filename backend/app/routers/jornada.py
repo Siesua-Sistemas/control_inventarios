@@ -8,6 +8,7 @@ from uuid import uuid4
 from pydantic import field_validator
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
+from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, selectinload
@@ -19,6 +20,12 @@ from app.models.empleado import Empleado
 from app.models.jornada import AlmuerzoManual, RegistroJornada
 from app.models.jornada_associations import empleado_sedes_jornada, sede_jornada_bodegas
 from app.models.sede_jornada import SedeJornada
+from app.services import recargos as rec
+from app.services.jornada_excel import (
+    construir_excel_consolidado_mensual,
+    construir_excel_detalle_mensual,
+    construir_excel_resumen_mensual,
+)
 
 router = APIRouter(prefix='/api/v1/jornada', tags=['jornada'])
 
@@ -214,6 +221,9 @@ class DiaRegistros(BaseModel):
     tiempo_sede: str | None  # tiempo NETO (descontado almuerzo) o None si sin par
     almuerzo_min: int = 0   # minutos de almuerzo descontados (para info)
     almuerzo_manual: bool = False  # true si el valor fue fijado a mano (no calculado por sede)
+    recargos: dict[str, int] = {}  # minutos brutos por categoría legal (ver services/recargos.py)
+    extra_min: int = 0             # total de minutos extra (suma de las 4 categorías "extra_*")
+    excede_diario: bool = False    # extra_min > 120 (Ley 2466: máx. 2h extra/día)
 
 
 class SemanaResponse(BaseModel):
@@ -369,40 +379,29 @@ async def registrar_jornada(
                     return s
         return None
 
-    sede_detectada: SedeJornada | None = None
-
-    if tipo_final == 'entrada':
-        # 1. Buscar en sedes asignadas
-        sede_detectada = _detectar_sede(sedes_conf)
-        # 2. Si no encontró en las asignadas, buscar en TODAS las sedes activas
-        #    (cubre el caso de empleado enviado a otra sede sin actualizar perfil)
-        if sede_detectada is None:
-            sede_detectada = _detectar_sede(todas_sedes)
-        # 3. Bloquear si hay sedes configuradas y no se encontró coincidencia por IP ni GPS
-        if sede_detectada is None and todas_sedes:
-            if latitud is not None and longitud is not None:
-                closest = min(todas_sedes, key=lambda s: _haversine_metros(latitud, longitud, s.latitud, s.longitud))
-                dist = int(_haversine_metros(latitud, longitud, closest.latitud, closest.longitud))
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail=f'Estás fuera del rango de todas las sedes ({dist} m de "{closest.nombre}", máx {closest.radio_metros} m)',
-                )
-            # Sin IP autorizada y sin GPS: no hay forma de verificar la ubicación, bloquear
+    # Entrada y salida usan exactamente la misma verificación de ubicación: solo se
+    # puede marcar con IP autorizada o con GPS dentro del radio de una sede autorizada.
+    # Ya no se permite marcar salida "fuera de sede" con novedad.
+    # 1. Buscar en sedes asignadas
+    sede_detectada = _detectar_sede(sedes_conf)
+    # 2. Si no encontró en las asignadas, buscar en TODAS las sedes activas
+    #    (cubre el caso de empleado enviado a otra sede sin actualizar perfil)
+    if sede_detectada is None:
+        sede_detectada = _detectar_sede(todas_sedes)
+    # 3. Bloquear si hay sedes configuradas y no se encontró coincidencia por IP ni GPS
+    if sede_detectada is None and todas_sedes:
+        if latitud is not None and longitud is not None:
+            closest = min(todas_sedes, key=lambda s: _haversine_metros(latitud, longitud, s.latitud, s.longitud))
+            dist = int(_haversine_metros(latitud, longitud, closest.latitud, closest.longitud))
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail='No se pudo verificar tu ubicación. Activa el GPS en tu navegador e inténtalo de nuevo.',
+                detail=f'Estás fuera del rango de todas las sedes ({dist} m de "{closest.nombre}", máx {closest.radio_metros} m)',
             )
-    else:
-        # Salida: se permite aunque quede fuera de rango (queda marcada con novedad),
-        # pero requiere al menos UNA señal de ubicación real (IP autorizada o GPS,
-        # así esté fuera de rango). Sin IP válida y sin ninguna lectura de GPS no hay
-        # nada que registrar como evidencia, así que se bloquea igual que la entrada.
-        sede_detectada = _detectar_sede(sedes_conf) or _detectar_sede(todas_sedes)
-        if sede_detectada is None and latitud is None and longitud is None:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail='No se pudo verificar tu ubicación. Activa el GPS en tu navegador e inténtalo de nuevo.',
-            )
+        # Sin IP autorizada y sin GPS: no hay forma de verificar la ubicación, bloquear
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail='No se pudo verificar tu ubicación. Activa el GPS en tu navegador e inténtalo de nuevo.',
+        )
 
     # Actualizar sede de bodega
     if tipo_final == 'entrada' and sede_detectada:
@@ -437,9 +436,9 @@ async def registrar_jornada(
         longitud=longitud,
         ip_publica=ip_actual,
         dispositivo=dispositivo,
-        # No se pudo confirmar la ubicación por IP ni GPS. Para entrada esto ya
-        # bloquea el registro (salvo que no haya sedes configuradas); para salida
-        # no bloquea, pero queda marcado para que Gestión Humana lo revise.
+        # Solo queda en True si no hay ninguna sede configurada (caso en que no se
+        # bloquea nada); con sedes configuradas, no llegar a esta línea con
+        # sede_detectada=None ya habría bloqueado el registro arriba.
         ubicacion_no_verificada=sede_detectada is None,
     )
     db.add(registro)
@@ -1209,6 +1208,15 @@ def reporte_semanal(
 
 # ── Reporte mensual ─────────────────────────────────────────────────────────────
 
+class PeriodoExtraOut(BaseModel):
+    inicio: str
+    fin: str
+    tipo: str          # 'semana' (turno único) | 'ciclo_15d' (doble turno)
+    extra_min: int
+    limite_min: int
+    excede: bool
+
+
 class EmpleadoMesOut(BaseModel):
     empleado_id: int
     nombres: str
@@ -1222,6 +1230,10 @@ class EmpleadoMesOut(BaseModel):
     total_minutos: int
     novedades_manuales: int    # registros is_manual=True en el mes
     novedades_ubicacion: int   # registros ubicacion_no_verificada=True en el mes
+    recargos_totales: dict[str, int] = {}   # suma de minutos por categoría en el mes
+    dias_excedidos: int = 0     # días con más de 2h extra (Ley 2466)
+    periodos_extra: list[PeriodoExtraOut] = []  # semanas o ciclos de 15 días con su total de extra
+    periodos_excedidos: int = 0  # cuántos de esos periodos superaron el límite legal
 
 
 class ReporteMensualOut(BaseModel):
@@ -1231,25 +1243,88 @@ class ReporteMensualOut(BaseModel):
     empleados: list[EmpleadoMesOut]
 
 
-@router.get('/admin/reporte-mensual', response_model=ReporteMensualOut)
-def reporte_mensual(
-    mes: str | None = Query(None, description='Mes en formato YYYY-MM'),
-    sede_id: int | None = Query(None),
-    db: Session = Depends(get_db),
-    _user=Depends(require_permissions('jornada:read')),
-):
-    hoy_bog = _bogota_now().date()
-    try:
-        year, month = (int(p) for p in mes.split('-')) if mes else (hoy_bog.year, hoy_bog.month)
-    except ValueError:
-        year, month = hoy_bog.year, hoy_bog.month
+def _periodos_extra_rango(
+    dias: list[DiaRegistros], tipo_turno: str, primer_dia: date,
+) -> list[PeriodoExtraOut]:
+    """
+    Agrupa los días del periodo consultado (mes completo o rango personalizado)
+    en periodos de control de horas extra (Ley 2466) y suma el total de
+    minutos extra de cada uno:
+      - Turno único: semanas calendario reales (Lun-Dom), límite 12h/semana.
+      - Doble turno: bloques de 15 días contados desde el inicio del rango
+        consultado, como aproximación al ciclo de nivelación, límite
+        proporcional. Si el rango consultado ES un ciclo de 15 días, esto
+        produce un único periodo que cubre exactamente ese rango.
+    Solo considera los días presentes en `dias` (dentro del rango consultado),
+    así que un periodo en el borde del rango puede aparecer con menos días.
+    """
+    if not dias:
+        return []
 
-    primer_dia = date(year, month, 1)
-    ultimo_dia_num = calendar.monthrange(year, month)[1]
-    ultimo_dia = date(year, month, ultimo_dia_num)
-    # No contar días futuros si el mes consultado es el mes en curso
-    tope_dia = min(ultimo_dia, hoy_bog) if (year, month) == (hoy_bog.year, hoy_bog.month) else ultimo_dia
-    mes_str = f'{year:04d}-{month:02d}'
+    if tipo_turno == 'doble_turno':
+        limite = rec.LIMITE_EXTRA_CICLO_15D_MIN
+        tipo_periodo = 'ciclo_15d'
+        grupos: dict[int, list[DiaRegistros]] = defaultdict(list)
+        for d in dias:
+            fecha_dia = date.fromisoformat(d.fecha)
+            grupos[(fecha_dia - primer_dia).days // 15].append(d)
+    else:
+        limite = rec.LIMITE_EXTRA_SEMANAL_MIN
+        tipo_periodo = 'semana'
+        grupos = defaultdict(list)
+        for d in dias:
+            fecha_dia = date.fromisoformat(d.fecha)
+            semana_idx = (fecha_dia - (primer_dia - timedelta(days=primer_dia.weekday()))).days // 7
+            grupos[semana_idx].append(d)
+
+    periodos: list[PeriodoExtraOut] = []
+    for _, dias_grupo in sorted(grupos.items()):
+        extra_min = sum(d.extra_min for d in dias_grupo)
+        periodos.append(PeriodoExtraOut(
+            inicio=dias_grupo[0].fecha,
+            fin=dias_grupo[-1].fecha,
+            tipo=tipo_periodo,
+            extra_min=extra_min,
+            limite_min=limite,
+            excede=extra_min > limite,
+        ))
+    return periodos
+
+
+def _construir_reporte_mensual(
+    mes: str | None,
+    sede_id: int | None,
+    db: Session,
+    desde: str | None = None,
+    hasta: str | None = None,
+) -> ReporteMensualOut:
+    hoy_bog = _bogota_now().date()
+
+    # Periodo personalizado (cualquier rango de fechas, ej. una semana que no
+    # empieza el 1 del mes, o una ventana de 15 días para doble turno).
+    primer_dia = ultimo_dia = None
+    if desde and hasta:
+        try:
+            primer_dia = date.fromisoformat(desde)
+            ultimo_dia = date.fromisoformat(hasta)
+            if ultimo_dia < primer_dia:
+                primer_dia, ultimo_dia = ultimo_dia, primer_dia
+            if (ultimo_dia - primer_dia).days > 366:
+                ultimo_dia = primer_dia + timedelta(days=366)
+        except ValueError:
+            primer_dia = ultimo_dia = None
+
+    if primer_dia is None or ultimo_dia is None:
+        try:
+            year, month = (int(p) for p in mes.split('-')) if mes else (hoy_bog.year, hoy_bog.month)
+        except ValueError:
+            year, month = hoy_bog.year, hoy_bog.month
+        primer_dia = date(year, month, 1)
+        ultimo_dia = date(year, month, calendar.monthrange(year, month)[1])
+
+    # No contar días futuros si el periodo consultado ya empezó
+    tope_dia = ultimo_dia if primer_dia > hoy_bog else min(ultimo_dia, hoy_bog)
+    mes_str = f'{primer_dia.year:04d}-{primer_dia.month:02d}'
 
     sede_nombre_filter: str | None = None
     if sede_id:
@@ -1297,6 +1372,10 @@ def reporte_mensual(
     horarios = _horarios_por_nombre(db)
     overrides = _almuerzo_overrides(db, emp_ids, primer_dia, ultimo_dia)
     num_dias = (tope_dia - primer_dia).days + 1
+    festivos: set[date] = set()
+    for y in range(primer_dia.year, ultimo_dia.year + 1):
+        festivos |= rec.festivos_colombia(y)
+    UMBRAL_ORDINARIA_MIN = 420  # 7h/día (turno único y doble turno)
     resultado: list[EmpleadoMesOut] = []
 
     for emp in empleados:
@@ -1308,6 +1387,8 @@ def reporte_mensual(
         dias_ausentes = 0
         novedades_manuales = 0
         novedades_ubicacion = 0
+        dias_excedidos = 0
+        recargos_por_dia: list[dict[str, int]] = []
 
         for i in range(num_dias):
             fecha_dia = primer_dia + timedelta(days=i)
@@ -1344,6 +1425,17 @@ def reporte_mensual(
             else:
                 dias_ausentes += 1
 
+            sesiones_local = [
+                (entradas_ord[j].timestamp + BOGOTA_OFFSET, salidas_ord[j].timestamp + BOGOTA_OFFSET)
+                for j in range(pares)
+            ]
+            recargos_dia = rec.clasificar_recargos_dia(sesiones_local, fecha_dia, festivos, UMBRAL_ORDINARIA_MIN)
+            extra_dia_min = rec.total_extra_min(recargos_dia)
+            excede_diario = extra_dia_min > rec.LIMITE_EXTRA_DIARIO_MIN
+            if excede_diario:
+                dias_excedidos += 1
+            recargos_por_dia.append(recargos_dia)
+
             dias.append(DiaRegistros(
                 fecha=fecha_dia.isoformat(),
                 dia_semana=_DIAS_ES[fecha_dia.weekday()],
@@ -1352,7 +1444,14 @@ def reporte_mensual(
                 tiempo_sede=tiempo_sede,
                 almuerzo_min=almuerzo_min,
                 almuerzo_manual=override is not None,
+                recargos=recargos_dia,
+                extra_min=extra_dia_min,
+                excede_diario=excede_diario,
             ))
+
+        tipo_turno = (horarios.get(emp.sede) or {}).get('tipo', 'turno_unico')
+        periodos_extra = _periodos_extra_rango(dias, tipo_turno, primer_dia)
+        periodos_excedidos = sum(1 for p in periodos_extra if p.excede)
 
         resultado.append(EmpleadoMesOut(
             empleado_id=emp.id,
@@ -1367,6 +1466,10 @@ def reporte_mensual(
             total_minutos=total_min,
             novedades_manuales=novedades_manuales,
             novedades_ubicacion=novedades_ubicacion,
+            recargos_totales=rec.sumar_categorias(recargos_por_dia),
+            dias_excedidos=dias_excedidos,
+            periodos_extra=periodos_extra,
+            periodos_excedidos=periodos_excedidos,
         ))
 
     return ReporteMensualOut(
@@ -1374,6 +1477,86 @@ def reporte_mensual(
         mes_inicio=primer_dia.isoformat(),
         mes_fin=ultimo_dia.isoformat(),
         empleados=resultado,
+    )
+
+
+_DESDE_DESC = 'Inicio de un periodo personalizado (YYYY-MM-DD). Si se da junto con `hasta`, reemplaza a `mes`.'
+_HASTA_DESC = 'Fin de un periodo personalizado (YYYY-MM-DD).'
+
+
+@router.get('/admin/reporte-mensual', response_model=ReporteMensualOut)
+def reporte_mensual(
+    mes: str | None = Query(None, description='Mes en formato YYYY-MM'),
+    sede_id: int | None = Query(None),
+    desde: str | None = Query(None, description=_DESDE_DESC),
+    hasta: str | None = Query(None, description=_HASTA_DESC),
+    db: Session = Depends(get_db),
+    _user=Depends(require_permissions('jornada:read')),
+):
+    return _construir_reporte_mensual(mes, sede_id, db, desde, hasta)
+
+
+_XLSX_MEDIA_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+
+
+@router.get('/admin/reporte-mensual/exportar-resumen')
+def exportar_reporte_mensual_resumen(
+    mes: str | None = Query(None),
+    sede_id: int | None = Query(None),
+    desde: str | None = Query(None, description=_DESDE_DESC),
+    hasta: str | None = Query(None, description=_HASTA_DESC),
+    db: Session = Depends(get_db),
+    _user=Depends(require_permissions('jornada:read')),
+):
+    reporte = _construir_reporte_mensual(mes, sede_id, db, desde, hasta)
+    buf = construir_excel_resumen_mensual(reporte)
+    filename = f'asistencia_{reporte.mes_inicio}_a_{reporte.mes_fin}.xlsx'
+    return Response(
+        content=buf.getvalue(),
+        media_type=_XLSX_MEDIA_TYPE,
+        headers={'Content-Disposition': f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get('/admin/reporte-mensual/exportar-consolidado')
+def exportar_reporte_mensual_consolidado(
+    mes: str | None = Query(None),
+    sede_id: int | None = Query(None),
+    desde: str | None = Query(None, description=_DESDE_DESC),
+    hasta: str | None = Query(None, description=_HASTA_DESC),
+    db: Session = Depends(get_db),
+    _user=Depends(require_permissions('jornada:read')),
+):
+    reporte = _construir_reporte_mensual(mes, sede_id, db, desde, hasta)
+    buf = construir_excel_consolidado_mensual(reporte)
+    filename = f'asistencia_todos_{reporte.mes_inicio}_a_{reporte.mes_fin}.xlsx'
+    return Response(
+        content=buf.getvalue(),
+        media_type=_XLSX_MEDIA_TYPE,
+        headers={'Content-Disposition': f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get('/admin/reporte-mensual/exportar-detalle/{empleado_id}')
+def exportar_reporte_mensual_detalle(
+    empleado_id: int,
+    mes: str | None = Query(None),
+    sede_id: int | None = Query(None),
+    desde: str | None = Query(None, description=_DESDE_DESC),
+    hasta: str | None = Query(None, description=_HASTA_DESC),
+    db: Session = Depends(get_db),
+    _user=Depends(require_permissions('jornada:read')),
+):
+    reporte = _construir_reporte_mensual(mes, sede_id, db, desde, hasta)
+    emp = next((e for e in reporte.empleados if e.empleado_id == empleado_id), None)
+    if emp is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Empleado no encontrado en el reporte')
+    buf = construir_excel_detalle_mensual(emp, f'{reporte.mes_inicio} a {reporte.mes_fin}')
+    filename = f'asistencia_{emp.apellidos}_{emp.nombres}_{reporte.mes_inicio}_a_{reporte.mes_fin}.xlsx'.replace(' ', '_')
+    return Response(
+        content=buf.getvalue(),
+        media_type=_XLSX_MEDIA_TYPE,
+        headers={'Content-Disposition': f'attachment; filename="{filename}"'},
     )
 
 

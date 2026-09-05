@@ -6,8 +6,13 @@ import { useEffect, useState } from 'react';
 import { NavBar } from '@/components/nav-bar';
 import {
   EmpleadoMesOut,
+  RECARGO_CATEGORIAS,
   ReporteMensualOut,
+  ReporteMensualParams,
   SedeJornadaOut,
+  exportarReporteMensualConsolidado,
+  exportarReporteMensualDetalle,
+  exportarReporteMensualResumen,
   getReporteMensual,
   getSedesJornada,
   isAuthenticated,
@@ -44,70 +49,66 @@ function labelMes(mesStr: string): string {
   return label.charAt(0).toUpperCase() + label.slice(1);
 }
 
-function csvDownload(filename: string, cabeceras: string[], filas: (string | number)[][]) {
-  const contenido = [cabeceras, ...filas]
-    .map((fila) => fila.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(','))
-    .join('\n');
-  const blob = new Blob(['﻿' + contenido], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
+function hoyISO(): string {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
 }
 
-function exportarResumenCSV(reporte: ReporteMensualOut) {
-  const cabeceras = [
-    'Empleado', 'Cargo', 'Sede',
-    'Días asistidos', 'Días incompletos', 'Días ausentes',
-    'Total horas', 'Novedades manuales', 'Novedades ubicación no verificada',
-  ];
-  const filas = reporte.empleados.map((e) => [
-    `${e.apellidos} ${e.nombres}`,
-    e.cargo ?? '',
-    e.sede ?? '',
-    e.dias_asistidos,
-    e.dias_incompletos,
-    e.dias_ausentes,
-    e.total_minutos > 0 ? formatMinutos(e.total_minutos) : '0',
-    e.novedades_manuales,
-    e.novedades_ubicacion,
-  ]);
-  csvDownload(`asistencia_mensual_${reporte.mes}.csv`, cabeceras, filas);
+function sumarDias(iso: string, dias: number): string {
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d + dias)).toISOString().slice(0, 10);
 }
 
-function exportarDetalleCSV(emp: EmpleadoMesOut, mes: string) {
-  const cabeceras = ['Fecha', 'Día', 'Entrada', 'Salida', 'Tiempo neto', 'Novedad'];
-  const filas = emp.dias.map((dia) => {
-    const entrada = dia.registros.find((r) => r.tipo === 'entrada');
-    const salida = dia.registros.find((r) => r.tipo === 'salida');
-    const novedades: string[] = [];
-    if (dia.registros.some((r) => r.is_manual)) novedades.push('Manual');
-    if (dia.registros.some((r) => r.ubicacion_no_verificada)) novedades.push('Ubicación no verificada');
-    return [
-      dia.fecha,
-      dia.dia_semana,
-      entrada ? formatHora(entrada.timestamp) : '',
-      salida ? formatHora(salida.timestamp) : '',
-      dia.tiempo_sede ?? '',
-      novedades.join(' · '),
-    ];
+function diaSemanaISO(iso: string): number {
+  // 0 = lunes ... 6 = domingo
+  const [y, m, d] = iso.split('-').map(Number);
+  return (new Date(Date.UTC(y, m - 1, d)).getUTCDay() + 6) % 7;
+}
+
+function lunesDeSemanaActual(): string {
+  const hoy = hoyISO();
+  return sumarDias(hoy, -diaSemanaISO(hoy));
+}
+
+function labelRango(desde: string, hasta: string): string {
+  const fmt = (iso: string) => new Date(iso + 'T12:00:00Z').toLocaleDateString('es-CO', {
+    day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC',
   });
-  csvDownload(`asistencia_${emp.apellidos}_${emp.nombres}_${mes}.csv`, cabeceras, filas);
+  return `${fmt(desde)} – ${fmt(hasta)}`;
+}
+
+function extraTotalMin(recargos: Record<string, number>): number {
+  return (
+    (recargos.extra_diurna ?? 0) +
+    (recargos.extra_nocturna ?? 0) +
+    (recargos.extra_dominical_diurno ?? 0) +
+    (recargos.extra_dominical_nocturno ?? 0)
+  );
 }
 
 // ── Detalle de un empleado (grilla de tarjetas por día) ──────────────────────
 
 function DetalleEmpleadoMes({
-  emp, mesLabel, onVolver,
+  emp, params, mesLabel, onVolver,
 }: {
   emp: EmpleadoMesOut;
+  params: ReporteMensualParams;
   mesLabel: string;
   onVolver: () => void;
 }) {
+  const [exportando, setExportando] = useState(false);
   const promedio = emp.dias_asistidos > 0 ? Math.round(emp.total_minutos / emp.dias_asistidos) : 0;
   const totalNovedades = emp.novedades_manuales + emp.novedades_ubicacion;
+  const extraTotal = extraTotalMin(emp.recargos_totales);
+  const alertaLegal = emp.dias_excedidos > 0 || emp.periodos_excedidos > 0;
+
+  async function exportar() {
+    setExportando(true);
+    try {
+      await exportarReporteMensualDetalle(emp.empleado_id, params, `asistencia_${emp.apellidos}_${emp.nombres}.xlsx`);
+    } finally {
+      setExportando(false);
+    }
+  }
 
   return (
     <div className="space-y-4 print:space-y-3">
@@ -117,9 +118,9 @@ function DetalleEmpleadoMes({
           ← Volver al resumen
         </button>
         <div className="flex gap-2">
-          <button type="button" onClick={() => exportarDetalleCSV(emp, mesLabel)}
-            className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800">
-            Exportar CSV
+          <button type="button" onClick={exportar} disabled={exportando}
+            className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800">
+            {exportando ? 'Generando…' : 'Exportar Excel'}
           </button>
           <button type="button" onClick={() => window.print()}
             className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800">
@@ -128,12 +129,20 @@ function DetalleEmpleadoMes({
         </div>
       </div>
 
+      {alertaLegal && (
+        <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900/40 dark:bg-red-900/20 dark:text-red-400 print:border-red-300">
+          ⚠ Supera los límites de horas extra de la Ley 2466: {emp.dias_excedidos} día(s) con más de 2h extra
+          {emp.periodos_excedidos > 0 && ` y ${emp.periodos_excedidos} periodo(s) con más de 12h extra`}.
+          Riesgo de sanción de MinTrabajo por incumplimiento de topes de jornada.
+        </div>
+      )}
+
       {/* Cabecera del empleado */}
       <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900 print:rounded-none print:border-x-0 print:border-t-0 print:shadow-none">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <p className="text-xs font-bold uppercase tracking-[0.25em] text-cyan-600 dark:text-cyan-400 print:text-cyan-700">
-              Informe de gestión · Jornada mensual
+              Informe de gestión · Jornada
             </p>
             <h2 className="mt-1 text-2xl font-extrabold text-slate-900 dark:text-white">
               {emp.nombres} {emp.apellidos}
@@ -193,6 +202,69 @@ function DetalleEmpleadoMes({
         </div>
       </div>
 
+      {/* Recargos legales del mes */}
+      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900 print:rounded-none print:border-x-0 print:shadow-none">
+        <p className="mb-3 text-xs font-bold uppercase tracking-[0.2em] text-cyan-600 dark:text-cyan-400">
+          Recargos (Ley 2466)
+        </p>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead>
+              <tr className="border-b border-slate-200 text-xs uppercase text-slate-400 dark:border-slate-700">
+                <th className="py-1.5 pr-3 font-semibold">Tipo de hora</th>
+                <th className="py-1.5 pr-3 font-semibold">Franja</th>
+                <th className="py-1.5 text-right font-semibold">Horas</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+              {RECARGO_CATEGORIAS.map((cat) => {
+                const min = emp.recargos_totales[cat.clave] ?? 0;
+                if (min === 0) return null;
+                return (
+                  <tr key={cat.clave}>
+                    <td className="py-1.5 pr-3 font-medium text-slate-700 dark:text-slate-200">{cat.label}</td>
+                    <td className="py-1.5 pr-3 text-xs text-slate-400">{cat.franja}</td>
+                    <td className="py-1.5 text-right font-semibold tabular-nums text-cyan-700 dark:text-cyan-400">
+                      {formatMinutos(min)}
+                    </td>
+                  </tr>
+                );
+              })}
+              <tr className="border-t border-slate-200 dark:border-slate-700">
+                <td className="py-1.5 pr-3 font-bold text-slate-800 dark:text-slate-100" colSpan={2}>Total horas extra</td>
+                <td className={`py-1.5 text-right font-bold tabular-nums ${extraTotal > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-slate-300 dark:text-slate-600'}`}>
+                  {formatMinutos(extraTotal)}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          {emp.recargos_totales && Object.values(emp.recargos_totales).every((v) => v === 0) && (
+            <p className="py-2 text-sm text-slate-400">Sin recargos este mes.</p>
+          )}
+        </div>
+
+        {emp.periodos_extra.length > 0 && (
+          <div className="mt-4 border-t border-slate-100 pt-3 dark:border-slate-800">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
+              {emp.periodos_extra[0].tipo === 'ciclo_15d' ? 'Ciclos de 15 días' : 'Semanas del mes'}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {emp.periodos_extra.map((p) => (
+                <span key={p.inicio}
+                  className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+                    p.excede
+                      ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                      : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
+                  }`}
+                  title={`${p.inicio} → ${p.fin} · límite ${formatMinutos(p.limite_min)}`}>
+                  {p.inicio.slice(5)}–{p.fin.slice(5)}: {formatMinutos(p.extra_min)} {p.excede ? '⚠' : ''}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Tarjetas por día */}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 print:grid-cols-4 print:gap-2">
         {emp.dias.map((dia) => {
@@ -229,6 +301,9 @@ function DetalleEmpleadoMes({
                 <div className="flex items-center gap-1">
                   {tieneNovedad && (
                     <span className="h-1.5 w-1.5 rounded-full bg-violet-500" title="Con novedad" />
+                  )}
+                  {dia.excede_diario && (
+                    <span className="h-1.5 w-1.5 rounded-full bg-red-500" title={`Excede 2h extra/día (${formatMinutos(dia.extra_min)})`} />
                   )}
                   <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${
                     esFuturo ? 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500'
@@ -305,11 +380,21 @@ export default function ReporteMensualPage() {
   const router = useRouter();
   const [reporte, setReporte] = useState<ReporteMensualOut | null>(null);
   const [sedes, setSedes] = useState<SedeJornadaOut[]>([]);
+  const [modo, setModo] = useState<'mes' | 'rango'>('mes');
   const [mes, setMes] = useState(mesActual());
+  const [desde, setDesde] = useState(lunesDeSemanaActual());
+  const [hasta, setHasta] = useState(() => sumarDias(lunesDeSemanaActual(), 6));
   const [filtroSede, setFiltroSede] = useState('');
   const [loading, setLoading] = useState(true);
   const [busqueda, setBusqueda] = useState('');
   const [empleadoDetalle, setEmpleadoDetalle] = useState<EmpleadoMesOut | null>(null);
+  const [exportando, setExportando] = useState<'resumen' | 'consolidado' | null>(null);
+  const sedeId = filtroSede ? Number(filtroSede) : undefined;
+  const params: ReporteMensualParams = modo === 'rango'
+    ? { desde, hasta, sedeId }
+    : { mes, sedeId };
+  const periodoLabel = modo === 'rango' ? labelRango(desde, hasta) : labelMes(mes);
+  const rangoInvalido = modo === 'rango' && (!desde || !hasta || hasta < desde);
 
   useEffect(() => {
     if (!isAuthenticated()) { router.replace('/login'); return; }
@@ -318,15 +403,15 @@ export default function ReporteMensualPage() {
 
   useEffect(() => {
     if (!isAuthenticated()) return;
+    if (rangoInvalido) return;
     cargar();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mes, filtroSede]);
+  }, [modo, mes, desde, hasta, filtroSede]);
 
   async function cargar() {
     setLoading(true);
     try {
-      const sedeId = filtroSede ? Number(filtroSede) : undefined;
-      const data = await getReporteMensual(mes, sedeId);
+      const data = await getReporteMensual(params);
       setReporte(data);
       setEmpleadoDetalle((prev) => {
         if (!prev) return null;
@@ -350,6 +435,25 @@ export default function ReporteMensualPage() {
   const totalAsistidos = empleadosFiltrados.reduce((a, e) => a + e.dias_asistidos, 0);
   const totalAusentes = empleadosFiltrados.reduce((a, e) => a + e.dias_ausentes, 0);
   const totalNovedades = empleadosFiltrados.reduce((a, e) => a + e.novedades_manuales + e.novedades_ubicacion, 0);
+  const empleadosConExceso = empleadosFiltrados.filter((e) => e.dias_excedidos > 0 || e.periodos_excedidos > 0).length;
+
+  async function exportarResumen() {
+    setExportando('resumen');
+    try {
+      await exportarReporteMensualResumen(params);
+    } finally {
+      setExportando(null);
+    }
+  }
+
+  async function exportarConsolidado() {
+    setExportando('consolidado');
+    try {
+      await exportarReporteMensualConsolidado(params);
+    } finally {
+      setExportando(null);
+    }
+  }
 
   return (
     <>
@@ -359,7 +463,8 @@ export default function ReporteMensualPage() {
         {empleadoDetalle ? (
           <DetalleEmpleadoMes
             emp={empleadoDetalle}
-            mesLabel={labelMes(mes)}
+            params={params}
+            mesLabel={periodoLabel}
             onVolver={() => setEmpleadoDetalle(null)}
           />
         ) : (
@@ -371,9 +476,9 @@ export default function ReporteMensualPage() {
                   Nuestro Horario
                 </p>
                 <h1 className="mt-0.5 text-2xl font-bold text-slate-900 dark:text-slate-50">
-                  Reporte de asistencia mensual
+                  Reporte de asistencia
                 </h1>
-                <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">{labelMes(mes)}</p>
+                <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">{periodoLabel}</p>
               </div>
 
               <div className="flex flex-wrap items-center gap-2 print:hidden">
@@ -381,32 +486,82 @@ export default function ReporteMensualPage() {
                   className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800">
                   Imprimir
                 </button>
-                <button type="button" onClick={() => reporte && exportarResumenCSV(reporte)} disabled={!reporte}
+                <button type="button" onClick={exportarResumen} disabled={!reporte || exportando !== null}
                   className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800">
-                  Exportar CSV
+                  {exportando === 'resumen' ? 'Generando…' : 'Exportar Excel (resumen)'}
+                </button>
+                <button type="button" onClick={exportarConsolidado} disabled={!reporte || exportando !== null}
+                  className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800">
+                  {exportando === 'consolidado' ? 'Generando…' : 'Exportar Excel (todos, detalle diario)'}
                 </button>
               </div>
             </div>
 
-            {/* Filtros */}
-            <div className="mb-5 flex flex-wrap items-end gap-3 print:hidden">
-              <div className="flex items-center overflow-hidden rounded-xl border border-slate-300 dark:border-slate-700">
-                <button type="button" onClick={() => setMes((m) => addMonths(m, -1))}
-                  className="px-3 py-2 text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800" title="Mes anterior">
-                  ←
+            {/* Modo de periodo */}
+            <div className="mb-3 flex flex-wrap items-center gap-2 print:hidden">
+              <div className="flex overflow-hidden rounded-xl border border-slate-300 dark:border-slate-700">
+                <button type="button" onClick={() => setModo('mes')}
+                  className={`px-3 py-1.5 text-xs font-semibold ${modo === 'mes' ? 'bg-cyan-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800'}`}>
+                  Mes completo
                 </button>
-                <span className="border-x border-slate-300 px-4 py-2 text-sm font-medium capitalize text-slate-700 dark:border-slate-700 dark:text-slate-200">
-                  {labelMes(mes)}
-                </span>
-                <button type="button" onClick={() => setMes((m) => addMonths(m, 1))}
-                  className="px-3 py-2 text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800" title="Mes siguiente">
-                  →
+                <button type="button" onClick={() => setModo('rango')}
+                  className={`px-3 py-1.5 text-xs font-semibold ${modo === 'rango' ? 'bg-cyan-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800'}`}>
+                  Periodo personalizado
                 </button>
               </div>
-              <button type="button" onClick={() => setMes(mesActual())}
-                className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800">
-                Mes actual
-              </button>
+              {modo === 'rango' && (
+                <>
+                  <button type="button" onClick={() => { setDesde(lunesDeSemanaActual()); setHasta(sumarDias(lunesDeSemanaActual(), 6)); }}
+                    className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800">
+                    Semana actual
+                  </button>
+                  <button type="button" onClick={() => { setDesde(sumarDias(hoyISO(), -14)); setHasta(hoyISO()); }}
+                    className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800">
+                    Últimos 15 días
+                  </button>
+                </>
+              )}
+            </div>
+
+            {/* Filtros */}
+            <div className="mb-5 flex flex-wrap items-end gap-3 print:hidden">
+              {modo === 'mes' ? (
+                <>
+                  <div className="flex items-center overflow-hidden rounded-xl border border-slate-300 dark:border-slate-700">
+                    <button type="button" onClick={() => setMes((m) => addMonths(m, -1))}
+                      className="px-3 py-2 text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800" title="Mes anterior">
+                      ←
+                    </button>
+                    <span className="border-x border-slate-300 px-4 py-2 text-sm font-medium capitalize text-slate-700 dark:border-slate-700 dark:text-slate-200">
+                      {labelMes(mes)}
+                    </span>
+                    <button type="button" onClick={() => setMes((m) => addMonths(m, 1))}
+                      className="px-3 py-2 text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800" title="Mes siguiente">
+                      →
+                    </button>
+                  </div>
+                  <button type="button" onClick={() => setMes(mesActual())}
+                    className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800">
+                    Mes actual
+                  </button>
+                </>
+              ) : (
+                <div className="flex flex-wrap items-center gap-2">
+                  <label className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
+                    Desde
+                    <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)}
+                      className="mt-0.5 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200" />
+                  </label>
+                  <label className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
+                    Hasta
+                    <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)}
+                      className="mt-0.5 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200" />
+                  </label>
+                  {rangoInvalido && (
+                    <span className="text-xs text-red-500">La fecha &quot;hasta&quot; debe ser igual o posterior a &quot;desde&quot;.</span>
+                  )}
+                </div>
+              )}
 
               <select value={filtroSede} onChange={(e) => setFiltroSede(e.target.value)}
                 className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
@@ -427,7 +582,7 @@ export default function ReporteMensualPage() {
 
             {/* Totales */}
             {reporte && (
-              <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4 print:grid-cols-4 print:gap-2">
+              <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-5 print:grid-cols-5 print:gap-2">
                 <div className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
                   <p className="text-xs text-slate-400">Empleados</p>
                   <p className="mt-0.5 text-xl font-bold text-slate-800 dark:text-slate-100">{empleadosFiltrados.length}</p>
@@ -444,6 +599,12 @@ export default function ReporteMensualPage() {
                   <p className="text-xs text-slate-400">Total horas</p>
                   <p className="mt-0.5 text-xl font-bold text-cyan-600 dark:text-cyan-400">{formatMinutos(totalHoras)}</p>
                 </div>
+                <div className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
+                  <p className="text-xs text-slate-400">Con exceso de extras (Ley 2466)</p>
+                  <p className={`mt-0.5 text-xl font-bold ${empleadosConExceso > 0 ? 'text-red-600 dark:text-red-400' : 'text-slate-300 dark:text-slate-600'}`}>
+                    {empleadosConExceso}
+                  </p>
+                </div>
               </div>
             )}
 
@@ -455,7 +616,7 @@ export default function ReporteMensualPage() {
             ) : !reporte || empleadosFiltrados.length === 0 ? (
               <div className="rounded-2xl border border-slate-200 bg-white p-12 text-center dark:border-slate-800 dark:bg-slate-900">
                 <p className="text-slate-500 dark:text-slate-400">
-                  {busqueda ? 'Sin resultados para esa búsqueda.' : 'No hay empleados con Nuestro Horario activo para este mes.'}
+                  {busqueda ? 'Sin resultados para esa búsqueda.' : 'No hay empleados con Nuestro Horario activo para este periodo.'}
                 </p>
               </div>
             ) : (
@@ -469,7 +630,9 @@ export default function ReporteMensualPage() {
                         <th className="px-3 py-3 text-center text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Incompletos</th>
                         <th className="px-3 py-3 text-center text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Ausentes</th>
                         <th className="px-3 py-3 text-right text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Total horas</th>
+                        <th className="px-3 py-3 text-right text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Extra</th>
                         <th className="px-3 py-3 text-center text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Novedades</th>
+                        <th className="px-3 py-3 text-center text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Exceso Ley 2466</th>
                         <th className="px-4 py-3 print:hidden" />
                       </tr>
                     </thead>
@@ -508,10 +671,20 @@ export default function ReporteMensualPage() {
                             <td className="px-3 py-3 text-right font-semibold tabular-nums text-cyan-700 dark:text-cyan-400">
                               {e.total_minutos > 0 ? formatMinutos(e.total_minutos) : '—'}
                             </td>
+                            <td className="px-3 py-3 text-right tabular-nums text-slate-500 dark:text-slate-400">
+                              {extraTotalMin(e.recargos_totales) > 0 ? formatMinutos(extraTotalMin(e.recargos_totales)) : '—'}
+                            </td>
                             <td className="px-3 py-3 text-center">
                               {novedades > 0 ? (
                                 <span className="inline-block rounded-full bg-violet-100 px-2.5 py-0.5 text-xs font-semibold text-violet-700 dark:bg-violet-900/30 dark:text-violet-400">
                                   {novedades}
+                                </span>
+                              ) : <span className="text-slate-300 dark:text-slate-600">—</span>}
+                            </td>
+                            <td className="px-3 py-3 text-center">
+                              {(e.dias_excedidos > 0 || e.periodos_excedidos > 0) ? (
+                                <span className="inline-block rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-semibold text-red-700 dark:bg-red-900/30 dark:text-red-400" title="Supera 2h extra/día o 12h extra/semana">
+                                  ⚠ {e.dias_excedidos}d
                                 </span>
                               ) : <span className="text-slate-300 dark:text-slate-600">—</span>}
                             </td>
