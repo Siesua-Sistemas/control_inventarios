@@ -19,6 +19,7 @@ import {
 } from '@/lib/api';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/auth-provider';
+import { AuditoriaModal } from '@/components/auditoria-modal';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -84,6 +85,10 @@ function ModalDia({
   const entradas = dia.registros.filter((r) => r.tipo === 'entrada').sort((a, b) => a.timestamp.localeCompare(b.timestamp));
   const salidas  = dia.registros.filter((r) => r.tipo === 'salida').sort((a, b) => a.timestamp.localeCompare(b.timestamp));
   const pares = Math.min(entradas.length, salidas.length);
+
+  const [mostrarAuditoria, setMostrarAuditoria] = useState(false);
+  const estadoAuditoria: 'presente' | 'completo' | 'ausente' =
+    dia.registros.length === 0 ? 'ausente' : entradas.length > salidas.length ? 'presente' : 'completo';
 
   const hoyBog = new Date(new Date().toLocaleString('en-CA', { timeZone: 'America/Bogota' }).slice(0, 10) + 'T00:00:00');
   const fechaDia = new Date(dia.fecha + 'T00:00:00');
@@ -208,6 +213,7 @@ function ModalDia({
   const sedesDelDia = [...new Set(dia.registros.filter((r) => r.sede).map((r) => r.sede as string))];
 
   return (
+    <>
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
       <div
@@ -239,11 +245,20 @@ function ModalDia({
               </div>
             )}
           </div>
-          <button onClick={onClose} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-4 w-4">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
+          <div className="flex shrink-0 items-center gap-1">
+            <button onClick={() => setMostrarAuditoria(true)}
+              className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-cyan-600 dark:hover:bg-slate-800 dark:hover:text-cyan-400"
+              aria-label="Ver auditoría (evidencia, GPS, fotos)" title="Auditoría">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-4 w-4">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+              </svg>
+            </button>
+            <button onClick={onClose} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-4 w-4">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
         </div>
 
         {/* Registros */}
@@ -471,11 +486,13 @@ function ModalDia({
               </form>
             ) : (
               <div className="mt-1 flex items-center justify-end gap-1.5">
-                {(dia.almuerzo_min > 0 || dia.almuerzo_manual) && (
-                  <p className="text-right text-[10px] text-slate-400 dark:text-slate-500">
-                    Se restaron {dia.almuerzo_min} min de almuerzo
-                    {dia.almuerzo_manual ? ' (fijado a mano)' : ' según el horario de la sede'}
-                  </p>
+                {dia.almuerzo_min > 0 && (
+                  <span
+                    className="text-xs leading-none"
+                    title={`Se restaron ${dia.almuerzo_min} min de almuerzo${dia.almuerzo_manual ? ' (fijado a mano)' : ' según el horario de la sede'}`}
+                  >
+                    🍴
+                  </span>
                 )}
                 {puedeAdmin && (
                   <button type="button"
@@ -493,6 +510,20 @@ function ModalDia({
         )}
       </div>
     </div>
+
+    {mostrarAuditoria && (
+      <AuditoriaModal
+        nombres={emp.nombres}
+        apellidos={emp.apellidos}
+        cargo={emp.cargo}
+        sede={emp.sede}
+        estado={estadoAuditoria}
+        tiempoSedeLabel={dia.tiempo_sede}
+        registros={dia.registros}
+        onClose={() => setMostrarAuditoria(false)}
+      />
+    )}
+    </>
   );
 }
 

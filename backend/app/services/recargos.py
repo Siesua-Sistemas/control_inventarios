@@ -11,10 +11,7 @@ DIA_FIN = time(19, 0)
 
 LIMITE_EXTRA_DIARIO_MIN = 120       # Ley 2466: máx. 2 horas extra por día
 LIMITE_EXTRA_SEMANAL_MIN = 720      # Ley 2466: máx. 12 horas extra por semana
-# Aproximación proporcional del límite semanal para el ciclo de nivelación de
-# 15 días del doble turno (12h * 15/7). No está definida literalmente en la
-# ley (que habla de semanas), se usa como referencia orientativa.
-LIMITE_EXTRA_CICLO_15D_MIN = round(LIMITE_EXTRA_SEMANAL_MIN * 15 / 7)
+JORNADA_ORDINARIA_SEMANAL_MIN = 42 * 60  # Tope de jornada ordinaria semanal (Ley 2101 de 2021, vigente desde jul-2026)
 
 RECARGO_CATEGORIAS: list[tuple[str, str, str]] = [
     ('ordinaria_diurna', 'Ordinaria diurna', 'Lun-Sáb, 6 a. m.-7 p. m.'),
@@ -102,11 +99,39 @@ def recargo_pct(categoria: str, mes: int) -> int:
     return tabla[categoria]
 
 
+def descontar_almuerzo_sesiones(
+    sesiones: list[tuple[datetime, datetime]],
+    almuerzo_min: int,
+) -> list[tuple[datetime, datetime]]:
+    """
+    Recorta `almuerzo_min` minutos del final de las sesiones del día (de la
+    más tardía hacia atrás) para que el total de minutos que se clasifica en
+    `clasificar_recargos_dia` coincida con el tiempo NETO ya descontado de
+    almuerzo (el mismo que se muestra como "Total horas"), en vez del tiempo
+    bruto entrada→salida.
+    """
+    if almuerzo_min <= 0 or not sesiones:
+        return sesiones
+
+    restante = almuerzo_min
+    ajustadas = list(sesiones)
+    for i in range(len(ajustadas) - 1, -1, -1):
+        if restante <= 0:
+            break
+        entrada, salida = ajustadas[i]
+        dur_min = (salida - entrada).total_seconds() / 60
+        recorte = min(restante, dur_min)
+        ajustadas[i] = (entrada, salida - timedelta(minutes=recorte))
+        restante -= recorte
+
+    return [(entrada, salida) for entrada, salida in ajustadas if salida > entrada]
+
+
 def clasificar_recargos_dia(
     sesiones: list[tuple[datetime, datetime]],
     fecha_dia: date,
     festivos: set[date],
-    umbral_ordinaria_min: int = 420,
+    umbral_ordinaria_min: int = 480,
 ) -> dict[str, int]:
     """
     Clasifica en minutos el tiempo BRUTO trabajado (entrada→salida, sin

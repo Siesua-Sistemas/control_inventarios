@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
 import { NavBar } from '@/components/nav-bar';
+import { useAuth } from '@/components/auth-provider';
 import {
   EmpleadoMesOut,
   RECARGO_CATEGORIAS,
@@ -16,9 +17,13 @@ import {
   getReporteMensual,
   getSedesJornada,
   isAuthenticated,
+  marcarPagoAnticipado,
+  quitarPagoAnticipado,
 } from '@/lib/api';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+const JORNADA_SEMANAL_MIN = 42 * 60; // Tope de jornada ordinaria semanal (Ley 2101 de 2021, vigente desde jul-2026)
 
 function formatHora(iso: string) {
   return new Date(iso).toLocaleTimeString('es-CO', {
@@ -88,17 +93,35 @@ function extraTotalMin(recargos: Record<string, number>): number {
 // ── Detalle de un empleado (grilla de tarjetas por día) ──────────────────────
 
 function DetalleEmpleadoMes({
-  emp, params, mesLabel, onVolver,
+  emp, params, mesLabel, onVolver, onCambio,
 }: {
   emp: EmpleadoMesOut;
   params: ReporteMensualParams;
   mesLabel: string;
   onVolver: () => void;
+  onCambio: () => void;
 }) {
+  const { hasPermission } = useAuth();
+  const puedeAdmin = hasPermission('jornada:admin');
   const [exportando, setExportando] = useState(false);
+  const [guardandoPago, setGuardandoPago] = useState<string | null>(null); // fecha en proceso
   const promedio = emp.dias_asistidos > 0 ? Math.round(emp.total_minutos / emp.dias_asistidos) : 0;
   const totalNovedades = emp.novedades_manuales + emp.novedades_ubicacion;
   const extraTotal = extraTotalMin(emp.recargos_totales);
+
+  async function togglePagoAnticipado(fecha: string, marcado: boolean) {
+    setGuardandoPago(fecha);
+    try {
+      if (marcado) {
+        await quitarPagoAnticipado(emp.empleado_id, fecha);
+      } else {
+        await marcarPagoAnticipado(emp.empleado_id, fecha);
+      }
+      onCambio();
+    } finally {
+      setGuardandoPago(null);
+    }
+  }
   const alertaLegal = emp.dias_excedidos > 0 || emp.periodos_excedidos > 0;
 
   async function exportar() {
@@ -199,6 +222,12 @@ function DetalleEmpleadoMes({
               {totalNovedades}
             </p>
           </div>
+          <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-800/60">
+            <p className="text-xs text-slate-400">Pago anticipado</p>
+            <p className={`mt-0.5 text-2xl font-bold ${emp.dias_pago_anticipado > 0 ? 'text-blue-600 dark:text-blue-400' : 'text-slate-300 dark:text-slate-600'}`}>
+              {emp.dias_pago_anticipado}
+            </p>
+          </div>
         </div>
       </div>
 
@@ -246,20 +275,89 @@ function DetalleEmpleadoMes({
         {emp.periodos_extra.length > 0 && (
           <div className="mt-4 border-t border-slate-100 pt-3 dark:border-slate-800">
             <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
-              {emp.periodos_extra[0].tipo === 'ciclo_15d' ? 'Ciclos de 15 días' : 'Semanas del mes'}
+              {emp.periodos_extra.some((p) => p.tipo !== 'semana') ? 'Ciclos de 2 semanas' : 'Semanas del mes'}
             </p>
             <div className="flex flex-wrap gap-2">
-              {emp.periodos_extra.map((p) => (
-                <span key={p.inicio}
-                  className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
-                    p.excede
-                      ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-                      : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
-                  }`}
-                  title={`${p.inicio} → ${p.fin} · límite ${formatMinutos(p.limite_min)}`}>
-                  {p.inicio.slice(5)}–{p.fin.slice(5)}: {formatMinutos(p.extra_min)} {p.excede ? '⚠' : ''}
-                </span>
-              ))}
+              {emp.periodos_extra.map((p) => {
+                if (p.tipo === 'suelto') {
+                  return (
+                    <div key={p.inicio}
+                      className="rounded-xl border border-dashed border-slate-200 bg-white px-3 py-1.5 dark:border-slate-700 dark:bg-slate-900"
+                      title={`${p.inicio} → ${p.fin} · fuera de ciclo, solo informativo`}>
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                        {p.inicio.slice(5)}–{p.fin.slice(5)} <span className="italic">(suelto)</span>
+                      </p>
+                      <p className="mt-0.5">
+                        <span className="text-sm font-bold text-slate-500 dark:text-slate-400">
+                          {formatMinutos(p.trabajado_min)}
+                        </span>
+                        <span className="ml-1 text-[10px] text-slate-400 dark:text-slate-500">trabajadas</span>
+                      </p>
+                      <p className="mt-0.5 text-[10px] text-slate-400 dark:text-slate-500">
+                        fuera de ciclo — informativo
+                      </p>
+                    </div>
+                  );
+                }
+
+                const restanteMin = Math.max(0, JORNADA_SEMANAL_MIN * (p.tipo === 'ciclo_2sem' ? 2 : 1) - p.trabajado_min);
+                return (
+                  <div key={p.inicio}
+                    className={`rounded-xl border px-3 py-1.5 ${
+                      p.excede
+                        ? 'border-red-200 bg-red-50 dark:border-red-900/40 dark:bg-red-900/10'
+                        : 'border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800/60'
+                    }`}
+                    title={p.extra_min > 0
+                      ? `${p.inicio} → ${p.fin} · límite de extra ${formatMinutos(p.limite_min)}`
+                      : `${p.inicio} → ${p.fin} · jornada ordinaria de referencia ${formatMinutos(JORNADA_SEMANAL_MIN * (p.tipo === 'ciclo_2sem' ? 2 : 1))}`}>
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                      {p.inicio.slice(5)}–{p.fin.slice(5)}
+                    </p>
+                    <p className="mt-0.5">
+                      <span className="text-sm font-bold text-slate-700 dark:text-slate-200">
+                        {formatMinutos(p.trabajado_min)}
+                      </span>
+                      <span className="ml-1 text-[10px] text-slate-400 dark:text-slate-500">trabajadas</span>
+                    </p>
+                    {p.tipo !== 'ciclo_2sem' && (
+                      p.extra_min > 0 ? (
+                        <p className="mt-0.5 text-xs font-bold text-red-600 dark:text-red-400">
+                          +{formatMinutos(p.extra_min)} extra {p.excede ? '⚠' : ''}
+                        </p>
+                      ) : restanteMin > 0 ? (
+                        <p className="mt-0.5 text-xs text-slate-400 dark:text-slate-500">
+                          faltan {formatMinutos(restanteMin)} p/ 42h
+                        </p>
+                      ) : (
+                        <p className="mt-0.5 text-xs text-emerald-600 dark:text-emerald-400">
+                          ✓ 42h completas
+                        </p>
+                      )
+                    )}
+                    {p.semanas.length === 2 && (
+                      <div className="mt-1.5 space-y-0.5 border-t border-slate-200 pt-1.5 dark:border-slate-700">
+                        {p.semanas.map((s) => (
+                          <p key={s.inicio} className="flex items-center justify-between gap-3 text-[10px]">
+                            <span className="text-slate-400 dark:text-slate-500">
+                              {s.inicio.slice(5)}–{s.fin.slice(5)}
+                            </span>
+                            <span className={`font-semibold ${
+                              s.diferencia_min >= 0
+                                ? 'text-red-500 dark:text-red-400'
+                                : 'text-blue-500 dark:text-blue-400'
+                            }`}>
+                              {s.diferencia_min >= 0
+                                ? `+${formatMinutos(s.diferencia_min)} extra`
+                                : `faltan ${formatMinutos(Math.abs(s.diferencia_min))}`}
+                            </span>
+                          </p>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
@@ -278,7 +376,9 @@ function DetalleEmpleadoMes({
             <div
               key={dia.fecha}
               className={`rounded-xl border p-4 transition-all print:rounded-lg print:p-3 ${
-                esFuturo
+                dia.pago_anticipado
+                  ? 'border-blue-200 bg-blue-50/60 dark:border-blue-900/40 dark:bg-blue-900/10'
+                  : esFuturo
                   ? 'border-dashed border-slate-200 bg-white opacity-50 dark:border-slate-700 dark:bg-slate-900'
                   : ausente
                   ? 'border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900'
@@ -306,19 +406,31 @@ function DetalleEmpleadoMes({
                     <span className="h-1.5 w-1.5 rounded-full bg-red-500" title={`Excede 2h extra/día (${formatMinutos(dia.extra_min)})`} />
                   )}
                   <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${
-                    esFuturo ? 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500'
+                    dia.pago_anticipado ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                    : esFuturo ? 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500'
                     : ausente ? 'bg-red-100 text-red-500 dark:bg-red-900/30 dark:text-red-400'
                     : completo ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
                     : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
                   }`}>
-                    {esFuturo ? 'Pendiente' : ausente ? 'Ausente' : completo ? 'Completo' : 'Incompleto'}
+                    {dia.pago_anticipado ? 'Pago anticipado' : esFuturo ? 'Pendiente' : ausente ? 'Ausente' : completo ? 'Completo' : 'Incompleto'}
                   </span>
+                  {puedeAdmin && !esFuturo && (
+                    <button type="button"
+                      onClick={() => togglePagoAnticipado(dia.fecha, dia.pago_anticipado)}
+                      disabled={guardandoPago === dia.fecha}
+                      title={dia.pago_anticipado ? 'Quitar marca de pago anticipado' : 'Marcar como pago anticipado (excluir de horas/recargos/extras)'}
+                      className="rounded p-0.5 text-slate-300 hover:bg-slate-200 hover:text-blue-600 disabled:opacity-50 dark:text-slate-600 dark:hover:bg-slate-700 dark:hover:text-blue-400">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-3 w-3">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33" />
+                      </svg>
+                    </button>
+                  )}
                 </div>
               </div>
 
               {ausente ? (
                 <p className="text-xs text-slate-300 dark:text-slate-600">
-                  {esFuturo ? 'Aún no ha ocurrido' : 'Sin registros este día'}
+                  {dia.pago_anticipado ? 'Turno pagado por adelantado' : esFuturo ? 'Aún no ha ocurrido' : 'Sin registros este día'}
                 </p>
               ) : (
                 <div className="space-y-1.5">
@@ -352,11 +464,25 @@ function DetalleEmpleadoMes({
                     </div>
                   ))}
 
+                  {dia.pago_anticipado && (
+                    <p className="mt-1 text-[10px] italic text-blue-500 dark:text-blue-400">
+                      Excluido de horas, recargos y extras (pago anticipado)
+                    </p>
+                  )}
+
                   {dia.tiempo_sede && (
                     <div className="mt-2 border-t border-emerald-200/70 pt-2 dark:border-emerald-900/30">
                       <div className="flex items-center justify-between">
-                        <span className="text-[10px] uppercase tracking-wider text-emerald-600/70 dark:text-emerald-500">
+                        <span className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-emerald-600/70 dark:text-emerald-500">
                           Tiempo en sede
+                          {dia.almuerzo_min > 0 && (
+                            <span
+                              className="text-xs leading-none"
+                              title={`Almuerzo descontado: ${dia.almuerzo_min} min${dia.almuerzo_manual ? ' (fijado a mano)' : ''}`}
+                            >
+                              🍴
+                            </span>
+                          )}
                         </span>
                         <span className="text-sm font-bold text-emerald-700 dark:text-emerald-400">
                           {dia.tiempo_sede}
@@ -466,6 +592,7 @@ export default function ReporteMensualPage() {
             params={params}
             mesLabel={periodoLabel}
             onVolver={() => setEmpleadoDetalle(null)}
+            onCambio={cargar}
           />
         ) : (
           <>

@@ -37,3 +37,20 @@ class AlmuerzoManual(Base):
     almuerzo_min = Column(Integer, nullable=False)
     created_by_id = Column(Integer, ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class PagoAnticipado(Base):
+    """Marca un día de un empleado como pagado por adelantado (turno adicional
+    con un beneficio distinto, ya cubierto fuera de este sistema).
+
+    Cuando existe una fila aquí para (empleado_id, fecha), el reporte mensual
+    excluye por completo ese día del cálculo de horas trabajadas, recargos y
+    horas extra — solo se muestra a modo informativo.
+    """
+    __tablename__ = 'jornada_pago_anticipado'
+
+    id = Column(Integer, primary_key=True, index=True)
+    empleado_id = Column(Integer, ForeignKey('empleados.id', ondelete='CASCADE'), nullable=False, index=True)
+    fecha = Column(Date, nullable=False)
+    created_by_id = Column(Integer, ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)

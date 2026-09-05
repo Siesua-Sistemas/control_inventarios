@@ -17,7 +17,7 @@ from app.database import get_db
 from app.dependencies import get_current_user, require_permissions
 from app.models.bodega import Bodega
 from app.models.empleado import Empleado
-from app.models.jornada import AlmuerzoManual, RegistroJornada
+from app.models.jornada import AlmuerzoManual, PagoAnticipado, RegistroJornada
 from app.models.jornada_associations import empleado_sedes_jornada, sede_jornada_bodegas
 from app.models.sede_jornada import SedeJornada
 from app.services import recargos as rec
@@ -131,6 +131,20 @@ def _almuerzo_overrides(db: Session, empleado_ids: list[int], desde: date, hasta
     return {(r.empleado_id, r.fecha): r.almuerzo_min for r in rows}
 
 
+def _pagos_anticipados(db: Session, empleado_ids: list[int], desde: date, hasta: date) -> set[tuple[int, date]]:
+    """Carga los días marcados como 'pago anticipado' en el rango de fechas dado."""
+    if not empleado_ids:
+        return set()
+    rows = db.scalars(
+        select(PagoAnticipado).where(
+            PagoAnticipado.empleado_id.in_(empleado_ids),
+            PagoAnticipado.fecha >= desde,
+            PagoAnticipado.fecha <= hasta,
+        )
+    ).all()
+    return {(r.empleado_id, r.fecha) for r in rows}
+
+
 def _horarios_por_nombre(db: Session) -> dict[str, dict]:
     """Carga horario_config de todas las sedes activas, indexado por nombre."""
     return {
@@ -224,6 +238,7 @@ class DiaRegistros(BaseModel):
     recargos: dict[str, int] = {}  # minutos brutos por categoría legal (ver services/recargos.py)
     extra_min: int = 0             # total de minutos extra (suma de las 4 categorías "extra_*")
     excede_diario: bool = False    # extra_min > 120 (Ley 2466: máx. 2h extra/día)
+    pago_anticipado: bool = False  # día excluido del cálculo de horas/recargos/extras (turno pagado por adelantado)
 
 
 class SemanaResponse(BaseModel):
@@ -866,6 +881,67 @@ def quitar_almuerzo_manual(
     db.commit()
 
 
+class PagoAnticipadoIn(BaseModel):
+    empleado_id: int
+    fecha: str          # "YYYY-MM-DD"
+
+
+@router.put('/admin/pago-anticipado')
+def marcar_pago_anticipado(
+    body: PagoAnticipadoIn,
+    db: Session = Depends(get_db),
+    user=Depends(require_permissions('jornada:admin')),
+):
+    """Marca un día de un empleado como pagado por adelantado (turno adicional
+    con otro beneficio, ya cubierto fuera de este sistema). El reporte mensual
+    excluye ese día del cálculo de horas trabajadas, recargos y horas extra."""
+    empleado = db.get(Empleado, body.empleado_id)
+    if not empleado:
+        raise HTTPException(status_code=404, detail='Empleado no encontrado')
+
+    try:
+        fecha_dia = date.fromisoformat(body.fecha)
+    except ValueError:
+        raise HTTPException(status_code=400, detail='Fecha inválida')
+
+    existente = db.scalar(
+        select(PagoAnticipado).where(
+            PagoAnticipado.empleado_id == body.empleado_id,
+            PagoAnticipado.fecha == fecha_dia,
+        )
+    )
+    if not existente:
+        db.add(PagoAnticipado(
+            empleado_id=body.empleado_id,
+            fecha=fecha_dia,
+            created_by_id=user.id,
+        ))
+        db.commit()
+    return {'ok': True}
+
+
+@router.delete('/admin/pago-anticipado', status_code=status.HTTP_204_NO_CONTENT)
+def quitar_pago_anticipado(
+    empleado_id: int = Query(...),
+    fecha: str = Query(...),
+    db: Session = Depends(get_db),
+    _user=Depends(require_permissions('jornada:admin')),
+):
+    """Quita la marca de pago anticipado — el día vuelve a contarse normalmente."""
+    try:
+        fecha_dia = date.fromisoformat(fecha)
+    except ValueError:
+        raise HTTPException(status_code=400, detail='Fecha inválida')
+
+    db.execute(
+        delete(PagoAnticipado).where(
+            PagoAnticipado.empleado_id == empleado_id,
+            PagoAnticipado.fecha == fecha_dia,
+        )
+    )
+    db.commit()
+
+
 @router.post('/admin/sedes', response_model=SedeJornadaOut, status_code=status.HTTP_201_CREATED)
 def create_sede(
     body: SedeJornadaCreate,
@@ -1208,13 +1284,22 @@ def reporte_semanal(
 
 # ── Reporte mensual ─────────────────────────────────────────────────────────────
 
+class SemanaResumenOut(BaseModel):
+    inicio: str
+    fin: str
+    trabajado_min: int
+    diferencia_min: int  # trabajado_min - jornada ordinaria semanal (42h); + trabajó de más, - descansó
+
+
 class PeriodoExtraOut(BaseModel):
     inicio: str
     fin: str
-    tipo: str          # 'semana' (turno único) | 'ciclo_15d' (doble turno)
+    tipo: str          # 'semana' (turno único) | 'ciclo_2sem' (doble turno, 2 semanas completas) | 'suelto' (sobrante fuera de ciclo, informativo)
     extra_min: int
     limite_min: int
     excede: bool
+    trabajado_min: int = 0  # total de minutos trabajados (netos) en el periodo
+    semanas: list[SemanaResumenOut] = []  # solo para tipo == 'ciclo_2sem': desglose semana a semana
 
 
 class EmpleadoMesOut(BaseModel):
@@ -1227,6 +1312,7 @@ class EmpleadoMesOut(BaseModel):
     dias_asistidos: int     # días con entrada + salida
     dias_incompletos: int   # días con solo entrada
     dias_ausentes: int      # días transcurridos del mes sin ningún registro
+    dias_pago_anticipado: int = 0  # días excluidos del cálculo por ser pago anticipado
     total_minutos: int
     novedades_manuales: int    # registros is_manual=True en el mes
     novedades_ubicacion: int   # registros ubicacion_no_verificada=True en el mes
@@ -1243,51 +1329,117 @@ class ReporteMensualOut(BaseModel):
     empleados: list[EmpleadoMesOut]
 
 
+def _trabajado_min(dias_grupo: list[DiaRegistros]) -> int:
+    return sum(sum(d.recargos.values()) for d in dias_grupo)
+
+
 def _periodos_extra_rango(
     dias: list[DiaRegistros], tipo_turno: str, primer_dia: date,
 ) -> list[PeriodoExtraOut]:
     """
     Agrupa los días del periodo consultado (mes completo o rango personalizado)
-    en periodos de control de horas extra (Ley 2466) y suma el total de
-    minutos extra de cada uno:
-      - Turno único: semanas calendario reales (Lun-Dom), límite 12h/semana.
-      - Doble turno: bloques de 15 días contados desde el inicio del rango
-        consultado, como aproximación al ciclo de nivelación, límite
-        proporcional. Si el rango consultado ES un ciclo de 15 días, esto
-        produce un único periodo que cubre exactamente ese rango.
+    en periodos de control de horas extra (Ley 2466), siempre a partir de
+    semanas calendario reales (Lun-Dom, alineadas a partir del lunes de la
+    semana de `primer_dia`):
+      - Turno único: cada semana calendario es su propio periodo, límite
+        12h extra/semana.
+      - Doble turno: se emparejan de a DOS semanas calendario completas (7
+        días reales presentes) consecutivas para formar un ciclo de 2
+        semanas, límite 24h extra/ciclo (2×12h). Cualquier semana que no
+        complete un par (parcial en el borde del rango consultado, o
+        sobrante si hay un número impar de semanas completas) queda como
+        periodo "suelto", aparte, solo informativo (sin límite legal).
     Solo considera los días presentes en `dias` (dentro del rango consultado),
-    así que un periodo en el borde del rango puede aparecer con menos días.
+    así que una semana en el borde del rango puede aparecer con menos días.
     """
     if not dias:
         return []
 
-    if tipo_turno == 'doble_turno':
-        limite = rec.LIMITE_EXTRA_CICLO_15D_MIN
-        tipo_periodo = 'ciclo_15d'
-        grupos: dict[int, list[DiaRegistros]] = defaultdict(list)
-        for d in dias:
-            fecha_dia = date.fromisoformat(d.fecha)
-            grupos[(fecha_dia - primer_dia).days // 15].append(d)
-    else:
-        limite = rec.LIMITE_EXTRA_SEMANAL_MIN
-        tipo_periodo = 'semana'
-        grupos = defaultdict(list)
-        for d in dias:
-            fecha_dia = date.fromisoformat(d.fecha)
-            semana_idx = (fecha_dia - (primer_dia - timedelta(days=primer_dia.weekday()))).days // 7
-            grupos[semana_idx].append(d)
+    # Origen alineado al lunes de la semana de `primer_dia`, para que las
+    # semanas (y los ciclos de doble turno, que se arman a partir de ellas)
+    # arranquen siempre en lunes.
+    origen = primer_dia - timedelta(days=primer_dia.weekday())
 
-    periodos: list[PeriodoExtraOut] = []
-    for _, dias_grupo in sorted(grupos.items()):
-        extra_min = sum(d.extra_min for d in dias_grupo)
+    semanas: dict[int, list[DiaRegistros]] = defaultdict(list)
+    for d in dias:
+        fecha_dia = date.fromisoformat(d.fecha)
+        semanas[(fecha_dia - origen).days // 7].append(d)
+    semanas_ordenadas = [grupo for _, grupo in sorted(semanas.items())]
+
+    if tipo_turno != 'doble_turno':
+        limite = rec.LIMITE_EXTRA_SEMANAL_MIN
+        periodos: list[PeriodoExtraOut] = []
+        for dias_grupo in semanas_ordenadas:
+            extra_min = sum(d.extra_min for d in dias_grupo)
+            periodos.append(PeriodoExtraOut(
+                inicio=dias_grupo[0].fecha,
+                fin=dias_grupo[-1].fecha,
+                tipo='semana',
+                extra_min=extra_min,
+                limite_min=limite,
+                excede=extra_min > limite,
+                trabajado_min=_trabajado_min(dias_grupo),
+            ))
+        return periodos
+
+    # Doble turno: solo las semanas con los 7 días reales presentes se
+    # emparejan en ciclos de 2 semanas; las parciales (bordes del rango
+    # consultado) quedan sueltas.
+    completas = [g for g in semanas_ordenadas if len(g) == 7]
+    sueltas = [g for g in semanas_ordenadas if len(g) != 7]
+
+    periodos = []
+    for dias_grupo in sueltas:
         periodos.append(PeriodoExtraOut(
             inicio=dias_grupo[0].fecha,
             fin=dias_grupo[-1].fecha,
-            tipo=tipo_periodo,
-            extra_min=extra_min,
-            limite_min=limite,
-            excede=extra_min > limite,
+            tipo='suelto',
+            extra_min=sum(d.extra_min for d in dias_grupo),
+            limite_min=0,
+            excede=False,
+            trabajado_min=_trabajado_min(dias_grupo),
         ))
+
+    limite_ciclo = rec.LIMITE_EXTRA_SEMANAL_MIN * 2
+    i = 0
+    while i < len(completas):
+        if i + 1 < len(completas):
+            par = completas[i:i + 2]
+            extra_min = sum(d.extra_min for grupo in par for d in grupo)
+            periodos.append(PeriodoExtraOut(
+                inicio=par[0][0].fecha,
+                fin=par[-1][-1].fecha,
+                tipo='ciclo_2sem',
+                extra_min=extra_min,
+                limite_min=limite_ciclo,
+                excede=extra_min > limite_ciclo,
+                trabajado_min=sum(_trabajado_min(g) for g in par),
+                semanas=[
+                    SemanaResumenOut(
+                        inicio=g[0].fecha,
+                        fin=g[-1].fecha,
+                        trabajado_min=_trabajado_min(g),
+                        diferencia_min=_trabajado_min(g) - rec.JORNADA_ORDINARIA_SEMANAL_MIN,
+                    )
+                    for g in par
+                ],
+            ))
+            i += 2
+        else:
+            # Número impar de semanas completas: la última se queda sin pareja.
+            grupo = completas[i]
+            periodos.append(PeriodoExtraOut(
+                inicio=grupo[0].fecha,
+                fin=grupo[-1].fecha,
+                tipo='suelto',
+                extra_min=sum(d.extra_min for d in grupo),
+                limite_min=0,
+                excede=False,
+                trabajado_min=_trabajado_min(grupo),
+            ))
+            i += 1
+
+    periodos.sort(key=lambda p: p.inicio)
     return periodos
 
 
@@ -1371,11 +1523,12 @@ def _construir_reporte_mensual(
 
     horarios = _horarios_por_nombre(db)
     overrides = _almuerzo_overrides(db, emp_ids, primer_dia, ultimo_dia)
+    pagos_anticipados = _pagos_anticipados(db, emp_ids, primer_dia, ultimo_dia)
     num_dias = (tope_dia - primer_dia).days + 1
     festivos: set[date] = set()
     for y in range(primer_dia.year, ultimo_dia.year + 1):
         festivos |= rec.festivos_colombia(y)
-    UMBRAL_ORDINARIA_MIN = 420  # 7h/día (turno único y doble turno)
+    UMBRAL_ORDINARIA_MIN = 480  # 8h/día (turno único y doble turno)
     resultado: list[EmpleadoMesOut] = []
 
     for emp in empleados:
@@ -1388,6 +1541,7 @@ def _construir_reporte_mensual(
         novedades_manuales = 0
         novedades_ubicacion = 0
         dias_excedidos = 0
+        dias_pago_anticipado = 0
         recargos_por_dia: list[dict[str, int]] = []
 
         for i in range(num_dias):
@@ -1397,6 +1551,20 @@ def _construir_reporte_mensual(
 
             novedades_manuales += sum(1 for r in regs if r.is_manual)
             novedades_ubicacion += sum(1 for r in regs if r.ubicacion_no_verificada)
+
+            if (emp.id, fecha_dia) in pagos_anticipados:
+                # Turno adicional ya pagado por adelantado: se excluye por completo
+                # del cálculo de horas, recargos y extras de este informe (de nómina).
+                dias_pago_anticipado += 1
+                dias.append(DiaRegistros(
+                    fecha=fecha_dia.isoformat(),
+                    dia_semana=_DIAS_ES[fecha_dia.weekday()],
+                    es_hoy=(fecha_dia == hoy_bog),
+                    registros=[RegistroJornadaOut.model_validate(r) for r in regs],
+                    tiempo_sede=None,
+                    pago_anticipado=True,
+                ))
+                continue
 
             entradas_ord = sorted([r for r in regs if r.tipo == 'entrada'], key=lambda r: r.timestamp)
             salidas_ord = sorted([r for r in regs if r.tipo == 'salida'], key=lambda r: r.timestamp)
@@ -1429,6 +1597,7 @@ def _construir_reporte_mensual(
                 (entradas_ord[j].timestamp + BOGOTA_OFFSET, salidas_ord[j].timestamp + BOGOTA_OFFSET)
                 for j in range(pares)
             ]
+            sesiones_local = rec.descontar_almuerzo_sesiones(sesiones_local, almuerzo_min)
             recargos_dia = rec.clasificar_recargos_dia(sesiones_local, fecha_dia, festivos, UMBRAL_ORDINARIA_MIN)
             extra_dia_min = rec.total_extra_min(recargos_dia)
             excede_diario = extra_dia_min > rec.LIMITE_EXTRA_DIARIO_MIN
@@ -1463,6 +1632,7 @@ def _construir_reporte_mensual(
             dias_asistidos=dias_asistidos,
             dias_incompletos=dias_incompletos,
             dias_ausentes=dias_ausentes,
+            dias_pago_anticipado=dias_pago_anticipado,
             total_minutos=total_min,
             novedades_manuales=novedades_manuales,
             novedades_ubicacion=novedades_ubicacion,

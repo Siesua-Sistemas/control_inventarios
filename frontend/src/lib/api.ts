@@ -1747,6 +1747,7 @@ export interface DiaRegistros {
   recargos: Record<string, number>;
   extra_min: number;
   excede_diario: boolean;
+  pago_anticipado: boolean;
 }
 
 export const RECARGO_CATEGORIAS: { clave: string; label: string; franja: string }[] = [
@@ -1796,13 +1797,22 @@ export async function getReporteSemanal(fecha?: string, sedeId?: number): Promis
   return apiRequest(`/api/v1/jornada/admin/reporte-semanal${qs}`);
 }
 
+export interface SemanaResumenOut {
+  inicio: string;
+  fin: string;
+  trabajado_min: number;
+  diferencia_min: number; // trabajado_min - jornada ordinaria semanal (42h); + trabajó de más, - descansó
+}
+
 export interface PeriodoExtraOut {
   inicio: string;
   fin: string;
-  tipo: 'semana' | 'ciclo_15d';
+  tipo: 'semana' | 'ciclo_2sem' | 'suelto';
   extra_min: number;
   limite_min: number;
   excede: boolean;
+  trabajado_min: number;
+  semanas: SemanaResumenOut[]; // solo para tipo === 'ciclo_2sem': desglose semana a semana
 }
 
 export interface EmpleadoMesOut {
@@ -1815,6 +1825,7 @@ export interface EmpleadoMesOut {
   dias_asistidos: number;
   dias_incompletos: number;
   dias_ausentes: number;
+  dias_pago_anticipado: number;
   total_minutos: number;
   novedades_manuales: number;
   novedades_ubicacion: number;
@@ -2001,6 +2012,19 @@ export async function fijarAlmuerzoManual(
 export async function quitarAlmuerzoManual(empleadoId: number, fecha: string): Promise<void> {
   const q = new URLSearchParams({ empleado_id: String(empleadoId), fecha });
   await apiRequest(`/api/v1/jornada/admin/almuerzo?${q.toString()}`, { method: 'DELETE' });
+}
+
+export async function marcarPagoAnticipado(empleadoId: number, fecha: string): Promise<void> {
+  await apiRequest('/api/v1/jornada/admin/pago-anticipado', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ empleado_id: empleadoId, fecha }),
+  });
+}
+
+export async function quitarPagoAnticipado(empleadoId: number, fecha: string): Promise<void> {
+  const q = new URLSearchParams({ empleado_id: String(empleadoId), fecha });
+  await apiRequest(`/api/v1/jornada/admin/pago-anticipado?${q.toString()}`, { method: 'DELETE' });
 }
 
 export async function registrarJornada(
