@@ -19,8 +19,10 @@ import {
 
 // ─── types ────────────────────────────────────────────────────────────────────
 
+type Ocurrencia = 'fecha' | 'proximo';
+
 type CalendarItem =
-  | { _source: 'mantenimiento'; data: MantenimientoRow }
+  | { _source: 'mantenimiento'; data: MantenimientoRow; ocurrencia: Ocurrencia }
   | { _source: 'auto_preventivo'; data: EquipmentProximoPreventivoRow };
 
 // ─── constants ───────────────────────────────────────────────────────────────
@@ -48,7 +50,7 @@ function dayDiff(a: string, b: string) {
 
 type StatusInfo = { label: string; pill: string };
 
-function getStatusInfo(prox: string | null, today: string, estado: string): StatusInfo {
+function getStatusInfo(prox: string | null, today: string, estado: string, ocurrencia: Ocurrencia = 'proximo'): StatusInfo {
   if (estado === 'aprobado') return {
     label: 'Aprobado ✓',
     pill: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-200',
@@ -73,6 +75,12 @@ function getStatusInfo(prox: string | null, today: string, estado: string): Stat
     label: 'Cancelado',
     pill: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400',
   };
+  // Pill del día en que se REALIZÓ (no el de la próxima fecha programada): el estado
+  // todavía no es una fecha vencida/próxima, es simplemente el registro del día.
+  if (ocurrencia === 'fecha') return {
+    label: 'Registrado',
+    pill: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
+  };
   if (!prox) return {
     label: 'Sin fecha',
     pill: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
@@ -85,12 +93,13 @@ function getStatusInfo(prox: string | null, today: string, estado: string): Stat
   return { label: `En ${diff} días`, pill: 'bg-cyan-100 text-cyan-800 dark:bg-cyan-500/20 dark:text-cyan-200' };
 }
 
-function getPillColors(prox: string | null, today: string, estado: string) {
+function getPillColors(prox: string | null, today: string, estado: string, ocurrencia: Ocurrencia = 'proximo') {
   if (estado === 'aprobado' || estado === 'realizado') return 'border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-300';
   if (estado === 'pendiente_aprobacion') return 'border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-300';
   if (estado === 'en_proceso') return 'border-blue-300 bg-blue-50 text-blue-800 dark:border-blue-500/40 dark:bg-blue-500/10 dark:text-blue-300';
   if (estado === 'rechazado') return 'border-rose-300 bg-rose-50 text-rose-800 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-300';
   if (estado === 'cancelado') return 'border-slate-200 bg-slate-50 text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-500';
+  if (ocurrencia === 'fecha') return 'border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400';
   if (!prox) return 'border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400';
   const diff = dayDiff(prox, today);
   if (diff < 0) return 'border-red-300 bg-red-50 text-red-800 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-300';
@@ -131,19 +140,19 @@ function buildCalendar(year: number, month: number) {
 
 // ─── EventPill (real mantenimientos) ─────────────────────────────────────────
 
-function EventPill({ item, today, onClick, isSelected }: {
-  item: MantenimientoRow; today: string; onClick: () => void; isSelected: boolean;
+function EventPill({ item, ocurrencia, today, onClick, isSelected }: {
+  item: MantenimientoRow; ocurrencia: Ocurrencia; today: string; onClick: () => void; isSelected: boolean;
 }) {
-  const colors = getPillColors(item.proximo_mantenimiento, today, item.estado);
+  const colors = getPillColors(item.proximo_mantenimiento, today, item.estado, ocurrencia);
   const accent = getTipoAccent(item.tipo);
   const sedeWord = item.equipment_sede.split(' ')[0];
   const isDone = item.estado === 'aprobado' || item.estado === 'realizado';
-  const prefix = isDone ? '✓' : item.estado === 'en_proceso' ? '▶' : item.estado === 'pendiente_aprobacion' ? '⏳' : item.tipo[0];
+  const prefix = isDone ? '✓' : item.estado === 'en_proceso' ? '▶' : item.estado === 'pendiente_aprobacion' ? '⏳' : ocurrencia === 'fecha' ? '●' : item.tipo[0];
 
   return (
     <button
       onClick={onClick}
-      title={`${item.equipment_codigo} · ${item.equipment_sede} · ${item.tipo} · ${item.estado}`}
+      title={`${item.equipment_codigo} · ${item.equipment_sede} · ${item.tipo} · ${item.estado}${ocurrencia === 'fecha' ? ' · realizado este día' : ' · próximo mantenimiento'}`}
       className={`mt-0.5 block w-full truncate rounded border border-l-[3px] px-1 py-px text-left text-[11px] font-medium leading-4 transition-all
         ${colors} ${accent} ${isSelected ? 'ring-1 ring-cyan-500 ring-offset-0' : 'hover:opacity-80'}`}
     >
@@ -565,9 +574,14 @@ export function CalendarioContent() {
     const map: Record<string, CalendarItem[]> = {};
 
     for (const item of items) {
-      const key = item.proximo_mantenimiento;
-      if (!key) continue;
-      (map[key] ??= []).push({ _source: 'mantenimiento', data: item });
+      // Cada mantenimiento se ubica en el día en que se REALIZÓ (para que el registro
+      // siempre aparezca, incluido un Correctivo sin reprogramación) y, si tiene una
+      // próxima fecha programada distinta, también ahí como recordatorio a futuro.
+      const fechaKey = item.fecha.split('T')[0];
+      (map[fechaKey] ??= []).push({ _source: 'mantenimiento', data: item, ocurrencia: 'fecha' });
+      if (item.proximo_mantenimiento && item.proximo_mantenimiento !== fechaKey) {
+        (map[item.proximo_mantenimiento] ??= []).push({ _source: 'mantenimiento', data: item, ocurrencia: 'proximo' });
+      }
     }
     for (const item of autoItems) {
       const key = item.proximo_preventivo;
@@ -740,8 +754,9 @@ export function CalendarioContent() {
                     {evs.slice(0, MAX_VISIBLE_EVENTS).map((ci) => (
                       ci._source === 'mantenimiento' ? (
                         <EventPill
-                          key={`m-${ci.data.id}`}
+                          key={`m-${ci.data.id}-${ci.ocurrencia}`}
                           item={ci.data}
+                          ocurrencia={ci.ocurrencia}
                           today={todayStr}
                           onClick={() => setSelected(ci)}
                           isSelected={isSelectedItem(ci)}
@@ -778,6 +793,7 @@ export function CalendarioContent() {
             <span className="inline-block h-3 w-3 rounded border-2 border-dashed border-indigo-400" />
             Sin mantto.
           </span>
+          <span className="flex items-center gap-1.5">● Registrado (día en que se realizó)</span>
           <span className="flex items-center gap-1.5">
             <span className="inline-block h-3 w-1 rounded-sm bg-cyan-500" /> Preventivo
             <span className="ml-2 inline-block h-3 w-1 rounded-sm bg-rose-500" /> Correctivo

@@ -1,6 +1,6 @@
 from datetime import date, timedelta
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models.equipment import Equipment
@@ -77,10 +77,24 @@ class MantenimientoRepository:
             query = query.where(Equipment.tipo == tipo_equipo)
         if estado:
             query = query.where(Mantenimiento.estado == estado)
-        if proximo_desde:
-            query = query.where(Mantenimiento.proximo_mantenimiento >= proximo_desde)
-        if proximo_hasta:
-            query = query.where(Mantenimiento.proximo_mantenimiento <= proximo_hasta)
+        if proximo_desde or proximo_hasta:
+            # Un mantenimiento aparece en el rango si su próxima fecha programada cae ahí,
+            # O si se REALIZÓ en ese rango (por la fecha real `fecha`) — así el calendario
+            # siempre muestra el registro el día en que se hizo, además del recordatorio a
+            # futuro cuando `proximo_mantenimiento` cae en un mes distinto.
+            prox_cond = []
+            if proximo_desde:
+                prox_cond.append(Mantenimiento.proximo_mantenimiento >= proximo_desde)
+            if proximo_hasta:
+                prox_cond.append(Mantenimiento.proximo_mantenimiento <= proximo_hasta)
+
+            fecha_cond = []
+            if proximo_desde:
+                fecha_cond.append(func.date(Mantenimiento.fecha) >= proximo_desde)
+            if proximo_hasta:
+                fecha_cond.append(func.date(Mantenimiento.fecha) <= proximo_hasta)
+
+            query = query.where(or_(and_(*prox_cond), and_(*fecha_cond)))
         if estado_vencimiento:
             today = date.today()
             if estado_vencimiento == 'vencido':
