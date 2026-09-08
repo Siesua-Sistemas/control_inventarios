@@ -1345,6 +1345,8 @@ export interface EquipoBrief {
   estado: string;
   dominio?: string | null;
   bodega_nombre: string | null;
+  ubicacion: string | null;
+  parent_equipment_id: number | null;
 }
 
 export interface VerificarResponse {
@@ -1352,6 +1354,8 @@ export interface VerificarResponse {
   redes_wifi: RedWifiOut[];
   equipos_asignados: EquipoBrief[];
   equipos_bodega: EquipoBrief[];
+  sedes_disponibles: string[];
+  sede_actual: string | null;
 }
 
 export interface TicketPublicoCreate {
@@ -1417,11 +1421,11 @@ export interface TicketPortalDetailOut {
   imagenes: TicketImagenOut[];
 }
 
-export async function verificarEmpleado(documento: string): Promise<VerificarResponse> {
+export async function verificarEmpleado(documento: string, sede?: string): Promise<VerificarResponse> {
   const r = await fetch(`${API_BASE}/api/v1/portal/verificar`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ documento }),
+    body: JSON.stringify({ documento, sede }),
   });
   if (!r.ok) {
     const err: ApiError = await r.json().catch(() => ({}));

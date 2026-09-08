@@ -5,6 +5,8 @@ import { useEffect, useState } from 'react';
 
 import { NavBar } from '@/components/nav-bar';
 import { useAuth } from '@/components/auth-provider';
+import { EditarRegistrosModal } from '@/components/editar-registros-modal';
+import { AuditoriaModal } from '@/components/auditoria-modal';
 import {
   EmpleadoMesOut,
   RECARGO_CATEGORIAS,
@@ -105,6 +107,8 @@ function DetalleEmpleadoMes({
   const puedeAdmin = hasPermission('jornada:admin');
   const [exportando, setExportando] = useState(false);
   const [guardandoPago, setGuardandoPago] = useState<string | null>(null); // fecha en proceso
+  const [editarDia, setEditarDia] = useState<string | null>(null); // fecha con el editor de marcaciones abierto
+  const [auditoriaDia, setAuditoriaDia] = useState<string | null>(null); // fecha con la auditoría (fotos/GPS) abierta
   const promedio = emp.dias_asistidos > 0 ? Math.round(emp.total_minutos / emp.dias_asistidos) : 0;
   const totalNovedades = emp.novedades_manuales + emp.novedades_ubicacion;
   const extraTotal = extraTotalMin(emp.recargos_totales);
@@ -414,6 +418,27 @@ function DetalleEmpleadoMes({
                   }`}>
                     {dia.pago_anticipado ? 'Pago anticipado' : esFuturo ? 'Pendiente' : ausente ? 'Ausente' : completo ? 'Completo' : 'Incompleto'}
                   </span>
+                  {!esFuturo && (
+                    <button type="button"
+                      onClick={() => setAuditoriaDia(dia.fecha)}
+                      title="Auditoría (evidencia, GPS, fotos)"
+                      aria-label="Ver auditoría (evidencia, GPS, fotos)"
+                      className="rounded p-0.5 text-slate-300 hover:bg-slate-200 hover:text-cyan-600 dark:text-slate-600 dark:hover:bg-slate-700 dark:hover:text-cyan-400">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-3 w-3">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+                      </svg>
+                    </button>
+                  )}
+                  {puedeAdmin && !esFuturo && (
+                    <button type="button"
+                      onClick={() => setEditarDia(dia.fecha)}
+                      title="Editar marcaciones de este día"
+                      className="rounded p-0.5 text-slate-300 hover:bg-slate-200 hover:text-cyan-600 dark:text-slate-600 dark:hover:bg-slate-700 dark:hover:text-cyan-400">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-3 w-3">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487z" />
+                      </svg>
+                    </button>
+                  )}
                   {puedeAdmin && !esFuturo && (
                     <button type="button"
                       onClick={() => togglePagoAnticipado(dia.fecha, dia.pago_anticipado)}
@@ -496,6 +521,44 @@ function DetalleEmpleadoMes({
           );
         })}
       </div>
+
+      {editarDia && (() => {
+        const dia = emp.dias.find((d) => d.fecha === editarDia);
+        return (
+          <EditarRegistrosModal
+            empleadoId={emp.empleado_id}
+            nombres={emp.nombres}
+            apellidos={emp.apellidos}
+            sede={emp.sede}
+            fecha={editarDia}
+            almuerzoMin={dia?.almuerzo_min ?? 0}
+            almuerzoManual={dia?.almuerzo_manual ?? false}
+            onCambio={onCambio}
+            onClose={() => setEditarDia(null)}
+          />
+        );
+      })()}
+
+      {auditoriaDia && (() => {
+        const dia = emp.dias.find((d) => d.fecha === auditoriaDia);
+        if (!dia) return null;
+        const entradas = dia.registros.filter((r) => r.tipo === 'entrada');
+        const salidas = dia.registros.filter((r) => r.tipo === 'salida');
+        const estado: 'presente' | 'completo' | 'ausente' =
+          dia.registros.length === 0 ? 'ausente' : entradas.length > salidas.length ? 'presente' : 'completo';
+        return (
+          <AuditoriaModal
+            nombres={emp.nombres}
+            apellidos={emp.apellidos}
+            cargo={emp.cargo}
+            sede={emp.sede}
+            estado={estado}
+            tiempoSedeLabel={dia.tiempo_sede}
+            registros={dia.registros}
+            onClose={() => setAuditoriaDia(null)}
+          />
+        );
+      })()}
     </div>
   );
 }

@@ -5,6 +5,7 @@ from pydantic import BaseModel
 
 class VerificarRequest(BaseModel):
     documento: str
+    sede: str | None = None  # sede elegida por el empleado, si tiene varias asociadas
 
 
 class EmpleadoBrief(BaseModel):
@@ -35,6 +36,9 @@ class EquipoBrief(BaseModel):
     estado: str
     dominio: str | None = None
     bodega_nombre: str | None = None
+    ubicacion: str | None = None  # ej. "Consultorio 2", "Recepción" — sub-ubicación dentro de la sede
+    parent_equipment_id: int | None = None  # si es un periférico asociado a otro equipo
+    sede: str | None = None
 
     class Config:
         from_attributes = True
@@ -45,6 +49,8 @@ class VerificarResponse(BaseModel):
     redes_wifi: list[RedWifiOut]
     equipos_asignados: list[EquipoBrief]
     equipos_bodega: list[EquipoBrief]
+    sedes_disponibles: list[str] = []  # todas las sedes del empleado, para el selector
+    sede_actual: str | None = None     # sede efectivamente usada para filtrar bodega/wifi
 
 
 class TicketPublicoCreate(BaseModel):

@@ -355,6 +355,33 @@ function MisTickets({ documento }: { documento: string }) {
   );
 }
 
+function EquipoRowPortal({
+  eq, checked, onToggle, isChild = false, peripheralCount = 0,
+}: {
+  eq: EquipoBrief & { origen: string };
+  checked: boolean;
+  onToggle: () => void;
+  isChild?: boolean;
+  peripheralCount?: number;
+}) {
+  return (
+    <label className={`flex cursor-pointer items-center gap-2 border-t border-slate-100 px-3 py-2 text-sm hover:bg-slate-100 dark:border-slate-800 dark:hover:bg-slate-700/50 ${isChild ? 'bg-slate-50 pl-8 dark:bg-slate-900/40' : 'bg-white dark:bg-slate-800/60'}`}>
+      {isChild && <span className="shrink-0 text-slate-400 dark:text-slate-600">↳</span>}
+      <input type="checkbox" checked={checked} onChange={onToggle} className="h-4 w-4 shrink-0 rounded border-slate-300" />
+      <span className="shrink-0 font-mono text-xs text-slate-500">{eq.codigo_interno}</span>
+      <span className="min-w-0 flex-1 truncate">
+        <span className="text-slate-400">{eq.tipo}</span> {eq.marca} {eq.modelo}
+      </span>
+      {peripheralCount > 0 && (
+        <span className="shrink-0 rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-semibold text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300">
+          +{peripheralCount} periférico{peripheralCount > 1 ? 's' : ''}
+        </span>
+      )}
+      <span className="ml-auto shrink-0 whitespace-nowrap text-xs text-slate-400">{eq.origen}</span>
+    </label>
+  );
+}
+
 // ── PortalContent ────────────────────────────────────────────────────────────
 
 function PortalContent() {
@@ -388,17 +415,30 @@ function PortalContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [docParam]);
 
-  async function verificar(doc: string) {
+  async function verificar(doc: string, sede?: string) {
     setLoading(true);
     setError('');
     try {
-      const result = await verificarEmpleado(doc);
+      const result = await verificarEmpleado(doc, sede);
       setData(result);
       setStep('portal');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al verificar');
     } finally {
       setLoading(false);
+    }
+  }
+
+  const [cambiandoSede, setCambiandoSede] = useState(false);
+  async function cambiarSede(sede: string) {
+    setCambiandoSede(true);
+    try {
+      const result = await verificarEmpleado(documento, sede);
+      setData(result);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error al cambiar de sede');
+    } finally {
+      setCambiandoSede(false);
     }
   }
 
@@ -462,6 +502,38 @@ function PortalContent() {
     setSelectedEquipos((prev) => prev.filter((id) => visibles.has(id)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dominio, data]);
+
+  // Agrupar: cada equipo principal junto con sus periféricos, y por ubicación física
+  // (consultorio, recepción, etc.) para que la empleada identifique el equipo de un
+  // vistazo — clave cuando hay muchos equipos con la misma sede/bodega.
+  type EquipoConOrigen = EquipoBrief & { origen: string };
+  const equipoIdsVisibles = new Set(equiposFiltrados.map((e) => e.id));
+  const perifericosPorPadre = new Map<number, EquipoConOrigen[]>();
+  for (const eq of equiposFiltrados) {
+    if (eq.parent_equipment_id != null && equipoIdsVisibles.has(eq.parent_equipment_id)) {
+      const arr = perifericosPorPadre.get(eq.parent_equipment_id) ?? [];
+      arr.push(eq);
+      perifericosPorPadre.set(eq.parent_equipment_id, arr);
+    }
+  }
+  const equiposPrincipales = equiposFiltrados
+    .filter((eq) => eq.parent_equipment_id == null || !equipoIdsVisibles.has(eq.parent_equipment_id))
+    .slice()
+    .sort((a, b) => (a.ubicacion ?? '').localeCompare(b.ubicacion ?? '') || a.codigo_interno.localeCompare(b.codigo_interno));
+
+  const SIN_UBICACION = 'Ubicación sin especificar';
+  const gruposUbicacion = new Map<string, EquipoConOrigen[]>();
+  for (const eq of equiposPrincipales) {
+    const key = eq.ubicacion?.trim() || SIN_UBICACION;
+    const arr = gruposUbicacion.get(key) ?? [];
+    arr.push(eq);
+    gruposUbicacion.set(key, arr);
+  }
+  const ubicacionesOrdenadas = [...gruposUbicacion.keys()].sort((a, b) => {
+    if (a === SIN_UBICACION) return 1;
+    if (b === SIN_UBICACION) return -1;
+    return a.localeCompare(b);
+  });
 
   // ── Step: input ─────────────────────────────────────────────────────────
 
@@ -528,14 +600,31 @@ function PortalContent() {
             <p className="text-sm uppercase tracking-[0.3em] text-cyan-700 dark:text-cyan-300">Portal empleados</p>
             <h1 className="mt-0.5 text-lg font-bold">
               {data?.empleado.nombres} {data?.empleado.apellidos}
-              <span className="ml-2 text-sm font-normal text-slate-500 dark:text-slate-400">
-                · {data?.empleado.sede} · {data?.empleado.cargo}
-              </span>
+              {(data?.sedes_disponibles.length ?? 0) <= 1 && (
+                <span className="ml-2 text-sm font-normal text-slate-500 dark:text-slate-400">
+                  · {data?.sede_actual ?? data?.empleado.sede} · {data?.empleado.cargo}
+                </span>
+              )}
             </h1>
           </div>
-          <button type="button" onClick={() => { setStep('input'); setDocumento(''); setData(null); }} className="text-sm text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200">
-            ← Cambiar documento
-          </button>
+          <div className="flex items-center gap-3">
+            {data && data.sedes_disponibles.length > 1 && (
+              <div>
+                <label className="mb-0.5 block text-[10px] font-medium uppercase tracking-wide text-slate-400">Sede</label>
+                <select
+                  value={data.sede_actual ?? ''}
+                  onChange={(e) => cambiarSede(e.target.value)}
+                  disabled={cambiandoSede}
+                  className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900"
+                >
+                  {data.sedes_disponibles.map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+            )}
+            <button type="button" onClick={() => { setStep('input'); setDocumento(''); setData(null); }} className="text-sm text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200">
+              ← Cambiar documento
+            </button>
+          </div>
         </div>
       </div>
 
@@ -619,15 +708,39 @@ function PortalContent() {
                 <label className="mb-1 block text-sm font-medium">
                   Equipos relacionados <span className="font-normal text-slate-500">(opcional)</span>
                 </label>
-                {equiposFiltrados.length > 0 ? (
-                  <div className="grid gap-1 rounded-lg border border-slate-200 bg-slate-50 p-3 sm:grid-cols-2 dark:border-slate-700 dark:bg-slate-800">
-                    {equiposFiltrados.map((eq) => (
-                      <label key={eq.id} className="flex cursor-pointer items-center gap-2 text-sm">
-                        <input type="checkbox" checked={selectedEquipos.includes(eq.id)} onChange={() => toggleEquipo(eq.id)} className="h-4 w-4 rounded border-slate-300" />
-                        <span className="font-mono text-xs text-slate-500">{eq.codigo_interno}</span>
-                        <span className="truncate">{eq.marca} {eq.modelo}</span>
-                        <span className="ml-auto shrink-0 text-xs text-slate-400">{eq.origen}</span>
-                      </label>
+                {equiposPrincipales.length > 0 ? (
+                  <div className="max-h-80 overflow-y-auto rounded-lg border border-slate-200 dark:border-slate-700">
+                    {ubicacionesOrdenadas.map((ubic) => (
+                      <div key={ubic}>
+                        <div className="sticky top-0 border-b border-slate-200 bg-slate-100 px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
+                          📍 {ubic}
+                          <span className="ml-1 font-normal normal-case text-slate-400 dark:text-slate-500">
+                            ({gruposUbicacion.get(ubic)!.length})
+                          </span>
+                        </div>
+                        {gruposUbicacion.get(ubic)!.map((eq) => {
+                          const perifericos = perifericosPorPadre.get(eq.id) ?? [];
+                          return (
+                            <div key={eq.id}>
+                              <EquipoRowPortal
+                                eq={eq}
+                                checked={selectedEquipos.includes(eq.id)}
+                                onToggle={() => toggleEquipo(eq.id)}
+                                peripheralCount={perifericos.length}
+                              />
+                              {perifericos.map((p) => (
+                                <EquipoRowPortal
+                                  key={p.id}
+                                  eq={p}
+                                  checked={selectedEquipos.includes(p.id)}
+                                  onToggle={() => toggleEquipo(p.id)}
+                                  isChild
+                                />
+                              ))}
+                            </div>
+                          );
+                        })}
+                      </div>
                     ))}
                   </div>
                 ) : (

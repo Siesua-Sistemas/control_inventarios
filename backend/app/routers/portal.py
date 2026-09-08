@@ -137,12 +137,24 @@ def verificar(body: VerificarRequest, request: Request, db: Session = Depends(ge
 
     _log_access(db, 'colaborador', body.documento, ip, ua, 'exitoso')
 
-    # Redes WiFi activas — todas las sedes (visibles para cualquier empleado)
+    # Sedes del empleado: si está vinculado a varias sedes de jornada (empleados que
+    # rotan de sitio), se listan todas; si no, solo su sede principal.
+    sedes_disponibles = (
+        [s.nombre for s in empleado.sedes_jornada]
+        if empleado.sedes_jornada
+        else ([empleado.sede] if empleado.sede else [])
+    )
+    sede_actual = body.sede if body.sede in sedes_disponibles else (sedes_disponibles[0] if sedes_disponibles else None)
+
+    # Redes WiFi de la sede seleccionada (match tolerante, igual que equipment)
+    condiciones_wifi = [RedWifi.is_active.is_(True)]
+    if sede_actual and sede_actual.strip():
+        condiciones_wifi.append(RedWifi.sede.ilike(f'%{sede_actual.strip()}%'))
     redes = db.execute(
-        select(RedWifi).where(RedWifi.is_active.is_(True)).order_by(RedWifi.sede, RedWifi.nombre_red)
+        select(RedWifi).where(*condiciones_wifi).order_by(RedWifi.sede, RedWifi.nombre_red)
     ).scalars().all()
 
-    # Equipos asignados al empleado
+    # Equipos asignados al empleado (siempre se muestran, sin importar la sede elegida)
     eq_asignados = db.execute(
         select(Equipment).where(
             Equipment.empleado_id == empleado.id,
@@ -150,17 +162,17 @@ def verificar(body: VerificarRequest, request: Request, db: Session = Depends(ge
         )
     ).scalars().all()
 
-    # Equipos de la sede del empleado: en bodegas de la sede O ubicados en la sede
+    # Equipos de la sede seleccionada: en bodegas de esa sede O ubicados en ella
     # (los equipos de Bioingeniería suelen estar en salas, sin bodega ni empleado asignado).
     bodegas_sede = db.execute(
-        select(Bodega.id).where(Bodega.sede == empleado.sede, Bodega.is_active.is_(True))
-    ).scalars().all()
+        select(Bodega.id).where(Bodega.sede == sede_actual, Bodega.is_active.is_(True))
+    ).scalars().all() if sede_actual else []
 
     # Match tolerante de sede: el nombre en empleados ("COLINA") puede no ser idéntico
     # al de equipment ("CC PARQUE COLINA"). Se usa contención insensible a mayúsculas.
     condiciones_sede = []
-    if empleado.sede and empleado.sede.strip():
-        condiciones_sede.append(Equipment.sede.ilike(f'%{empleado.sede.strip()}%'))
+    if sede_actual and sede_actual.strip():
+        condiciones_sede.append(Equipment.sede.ilike(f'%{sede_actual.strip()}%'))
     if bodegas_sede:
         condiciones_sede.append(Equipment.bodega_id.in_(bodegas_sede))
 
@@ -185,6 +197,9 @@ def verificar(body: VerificarRequest, request: Request, db: Session = Depends(ge
             estado=eq.estado,
             dominio=eq.dominio,
             bodega_nombre=bodega_nombre,
+            ubicacion=eq.ubicacion,
+            parent_equipment_id=eq.parent_equipment_id,
+            sede=eq.sede,
         )
 
     equipos_asignados = [_eq_brief(e) for e in eq_asignados]
@@ -201,6 +216,8 @@ def verificar(body: VerificarRequest, request: Request, db: Session = Depends(ge
             sede=empleado.sede or '',
             cargo=empleado.cargo,
         ),
+        sedes_disponibles=sedes_disponibles,
+        sede_actual=sede_actual,
         redes_wifi=[RedWifiOut(
             id=r.id, sede=r.sede, nombre_red=r.nombre_red, tipo_red=r.tipo_red,
             contrasena=r.contrasena, descripcion=r.descripcion,
