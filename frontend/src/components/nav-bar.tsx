@@ -42,6 +42,7 @@ const NAV_ITEMS: NavItem[] = [
     { href: '/jornada/reporte', label: 'Reporte semanal', permission: 'jornada:read' },
     { href: '/jornada/reporte-mensual', label: 'Reporte mensual', permission: 'jornada:read' },
     { href: '/jornada/admin/sedes', label: 'Ubicaciones', permission: 'jornada:admin' },
+    { href: '/jornada/admin/agendas', label: 'Agendas', permission: 'jornada:admin' },
   ]},
   { label: 'Mi espacio', links: [
     { href: '/jornada', label: 'Nuestro Horario', permission: null },

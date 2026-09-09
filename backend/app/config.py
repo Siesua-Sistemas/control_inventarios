@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     CORS_ORIGINS: str = 'http://localhost:3000,http://127.0.0.1:3000'
     SEED_ADMIN_EMAIL: str = 'sistemas@siesua.com'
     SEED_ADMIN_PASSWORD: str = 'admin'
+    LOOKER_API_KEY: str = ''
 
 
 settings = Settings()

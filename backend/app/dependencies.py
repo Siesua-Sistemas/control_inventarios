@@ -1,8 +1,11 @@
-from fastapi import Depends, HTTPException, status
+import secrets
+
+from fastapi import Depends, Header, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.database import get_db
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
@@ -53,6 +56,16 @@ def require_permissions(*required_permissions: str):
         return user
 
     return dependency
+
+
+def require_api_key(x_api_key: str | None = Header(None, alias='X-API-Key')) -> bool:
+    """Autenticación por API key para integraciones externas (ej. conector de Looker
+    Studio), separada del login por JWT de los usuarios de la aplicación."""
+    if not settings.LOOKER_API_KEY:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail='Integración no configurada')
+    if not x_api_key or not secrets.compare_digest(x_api_key, settings.LOOKER_API_KEY):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='API key inválida')
+    return True
 
 
 def require_any_permission(*required_permissions: str):

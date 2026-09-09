@@ -14,6 +14,7 @@ from app.models.asignacion import Asignacion  # noqa: F401
 from app.models.bodega import Bodega  # noqa: F401
 from app.models.credencial import Credencial  # noqa: F401
 from app.models.empleado import Empleado  # noqa: F401
+from app.models.empleado_agenda import EmpleadoAgenda  # noqa: F401
 from app.models.equipment import Equipment  # noqa: F401
 from app.models.equipment_documento import EquipmentDocumento  # noqa: F401
 from app.models.equipment_photo import EquipmentPhoto  # noqa: F401

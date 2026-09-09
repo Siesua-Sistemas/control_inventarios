@@ -14,9 +14,10 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.database import get_db
-from app.dependencies import get_current_user, require_permissions
+from app.dependencies import get_current_user, require_api_key, require_permissions
 from app.models.bodega import Bodega
 from app.models.empleado import Empleado
+from app.models.empleado_agenda import EmpleadoAgenda
 from app.models.jornada import AlmuerzoManual, PagoAnticipado, RegistroJornada
 from app.models.jornada_associations import empleado_sedes_jornada, sede_jornada_bodegas
 from app.models.sede_jornada import SedeJornada
@@ -1005,6 +1006,108 @@ def delete_sede(
     db.commit()
 
 
+# ── Empleado × Agenda (línea de servicio: ESTETICA, LASER, MEDICA, …) ─────────
+# No existe esta relación en SIESUA — se administra aquí manualmente para poder
+# cruzar el tiempo real en sede (RegistroJornada) con la Agenda que reporta el
+# ETL de ocupación en Looker Studio.
+
+class EmpleadoAgendaRow(BaseModel):
+    empleado_id: int
+    nombres: str
+    apellidos: str
+    cargo: str | None
+    sede: str
+    agenda: str | None
+
+
+class EmpleadoAgendaIn(BaseModel):
+    empleado_id: int
+    sede: str
+    agenda: str
+
+
+@router.get('/admin/agendas', response_model=list[EmpleadoAgendaRow])
+def list_empleado_agendas(
+    db: Session = Depends(get_db),
+    _user=Depends(require_permissions('jornada:admin')),
+):
+    """Una fila por cada (empleado, sede) donde el empleado está asignado,
+    con la Agenda que cubre ahí (null si aún no se ha asignado)."""
+    empleados = list(db.scalars(
+        select(Empleado)
+        .where(Empleado.en_jornada.is_(True), Empleado.is_active.is_(True))
+        .order_by(Empleado.apellidos, Empleado.nombres)
+    ).all())
+
+    mapping = {
+        (a.empleado_id, a.sede): a.agenda
+        for a in db.scalars(select(EmpleadoAgenda)).all()
+    }
+
+    rows: list[EmpleadoAgendaRow] = []
+    for emp in empleados:
+        sedes = _load_sedes(db, _emp_sedes_ids(db, emp.id))
+        nombres_sedes = [s.nombre for s in sedes] or ([emp.sede] if emp.sede else [])
+        for sede_nombre in nombres_sedes:
+            rows.append(EmpleadoAgendaRow(
+                empleado_id=emp.id,
+                nombres=emp.nombres,
+                apellidos=emp.apellidos,
+                cargo=emp.cargo,
+                sede=sede_nombre,
+                agenda=mapping.get((emp.id, sede_nombre)),
+            ))
+    return rows
+
+
+@router.put('/admin/agendas', response_model=EmpleadoAgendaRow)
+def set_empleado_agenda(
+    body: EmpleadoAgendaIn,
+    db: Session = Depends(get_db),
+    _user=Depends(require_permissions('jornada:admin')),
+):
+    empleado = db.get(Empleado, body.empleado_id)
+    if not empleado:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Empleado no encontrado')
+
+    agenda_limpia = body.agenda.strip()
+    if not agenda_limpia:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='La agenda no puede estar vacía')
+
+    existente = db.scalar(
+        select(EmpleadoAgenda).where(
+            EmpleadoAgenda.empleado_id == body.empleado_id,
+            EmpleadoAgenda.sede == body.sede,
+        )
+    )
+    if existente:
+        existente.agenda = agenda_limpia
+    else:
+        db.add(EmpleadoAgenda(empleado_id=body.empleado_id, sede=body.sede, agenda=agenda_limpia))
+    db.commit()
+
+    return EmpleadoAgendaRow(
+        empleado_id=empleado.id, nombres=empleado.nombres, apellidos=empleado.apellidos,
+        cargo=empleado.cargo, sede=body.sede, agenda=agenda_limpia,
+    )
+
+
+@router.delete('/admin/agendas', status_code=status.HTTP_204_NO_CONTENT)
+def quitar_empleado_agenda(
+    empleado_id: int = Query(...),
+    sede: str = Query(...),
+    db: Session = Depends(get_db),
+    _user=Depends(require_permissions('jornada:admin')),
+):
+    db.execute(
+        delete(EmpleadoAgenda).where(
+            EmpleadoAgenda.empleado_id == empleado_id,
+            EmpleadoAgenda.sede == sede,
+        )
+    )
+    db.commit()
+
+
 # ── Endpoints de supervisión ──────────────────────────────────────────────────
 
 @router.get('/asistencia', response_model=AsistenciaResponse)
@@ -1752,5 +1855,142 @@ def get_registros_empleado(
         )
         .order_by(RegistroJornada.timestamp.asc())
     ).all())
+
+
+# ── Integración externa: ocupación real para Looker Studio ────────────────────
+# Protegido con API key (header `X-API-Key`), no con JWT: pensado para ser
+# consumido por un conector personalizado (Apps Script) que corre en los
+# servidores de Google, no por un usuario logueado en la aplicación.
+
+class OcupacionRealItem(BaseModel):
+    fecha: str            # "2026-08-01"
+    sede: str | None
+    agenda: str | None    # línea de servicio (ESTETICA/LASER/MEDICA/…) — null si no está asignada en Jornada → Admin → Agendas
+    empleado_id: int
+    cedula: str
+    nombres: str
+    apellidos: str
+    cargo: str | None
+    minutos_reales: int   # neto de almuerzo — tiempo real que el profesional estuvo en sede
+    sesiones: int         # cantidad de pares entrada/salida ese día (normalmente 1)
+
+
+class OcupacionRealOut(BaseModel):
+    desde: str
+    hasta: str
+    items: list[OcupacionRealItem]
+
+
+_MAX_RANGO_OCUPACION_DIAS = 366
+
+
+@router.get('/integraciones/looker/ocupacion-real', response_model=OcupacionRealOut)
+def ocupacion_real_looker(
+    desde: date = Query(..., description='Fecha inicial (YYYY-MM-DD)'),
+    hasta: date = Query(..., description='Fecha final (YYYY-MM-DD)'),
+    sede_id: int | None = Query(None, description='Filtra por una sede puntual (opcional)'),
+    db: Session = Depends(get_db),
+    _auth=Depends(require_api_key),
+):
+    """
+    Minutos reales trabajados en sede por profesional y día, calculados igual
+    que el resto de reportes de jornada (entrada→salida, neto de almuerzo).
+    Es la fuente para reemplazar/complementar en el reporte de ocupación de
+    Looker Studio la capacidad estimada (IdAgenda/DuracionFranja) con el
+    tiempo real en el que cada responsable estuvo en sede.
+    """
+    if hasta < desde:
+        desde, hasta = hasta, desde
+    if (hasta - desde).days > _MAX_RANGO_OCUPACION_DIAS:
+        hasta = desde + timedelta(days=_MAX_RANGO_OCUPACION_DIAS)
+
+    sede_nombre_filter: str | None = None
+    if sede_id:
+        sede_obj = db.scalar(select(SedeJornada).where(SedeJornada.id == sede_id))
+        if sede_obj:
+            sede_nombre_filter = sede_obj.nombre
+
+    empleados = list(db.scalars(
+        select(Empleado).where(Empleado.en_jornada.is_(True), Empleado.is_active.is_(True))
+    ).all())
+    if not empleados:
+        return OcupacionRealOut(desde=desde.isoformat(), hasta=hasta.isoformat(), items=[])
+
+    emp_ids = [e.id for e in empleados]
+    inicio_utc = datetime(desde.year, desde.month, desde.day) - BOGOTA_OFFSET
+    fin_utc = datetime(hasta.year, hasta.month, hasta.day) + timedelta(days=1) - BOGOTA_OFFSET
+
+    todos = list(db.scalars(
+        select(RegistroJornada)
+        .where(
+            RegistroJornada.empleado_id.in_(emp_ids),
+            RegistroJornada.timestamp >= inicio_utc,
+            RegistroJornada.timestamp < fin_utc,
+        )
+        .order_by(RegistroJornada.timestamp.asc())
+    ).all())
+
+    by_emp: dict[int, list[RegistroJornada]] = defaultdict(list)
+    for r in todos:
+        by_emp[r.empleado_id].append(r)
+
+    horarios = _horarios_por_nombre(db)
+    overrides = _almuerzo_overrides(db, emp_ids, desde, hasta)
+    pagos_anticipados = _pagos_anticipados(db, emp_ids, desde, hasta)
+    agendas_por_emp_sede = {
+        (a.empleado_id, a.sede): a.agenda
+        for a in db.scalars(select(EmpleadoAgenda).where(EmpleadoAgenda.empleado_id.in_(emp_ids))).all()
+    }
+    num_dias = (hasta - desde).days + 1
+
+    items: list[OcupacionRealItem] = []
+    for emp in empleados:
+        emp_regs = by_emp.get(emp.id)
+        if not emp_regs:
+            continue
+        for i in range(num_dias):
+            fecha_dia = desde + timedelta(days=i)
+            if (emp.id, fecha_dia) in pagos_anticipados:
+                continue  # turno ya cubierto/pagado aparte: no cuenta como ocupación real
+
+            regs_dia = [r for r in emp_regs if (r.timestamp + BOGOTA_OFFSET).date() == fecha_dia]
+            regs = [r for r in regs_dia if r.sede == sede_nombre_filter] if sede_nombre_filter else regs_dia
+            if not regs:
+                continue
+
+            entradas_ord = sorted([r for r in regs if r.tipo == 'entrada'], key=lambda r: r.timestamp)
+            salidas_ord = sorted([r for r in regs if r.tipo == 'salida'], key=lambda r: r.timestamp)
+            pares = min(len(entradas_ord), len(salidas_ord))
+            if pares == 0:
+                continue  # solo entrada sin salida (jornada en curso o incompleta ese día)
+
+            bruto_min = sum(
+                max(0, round((salidas_ord[j].timestamp - entradas_ord[j].timestamp).total_seconds() / 60))
+                for j in range(pares)
+            )
+            override = overrides.get((emp.id, fecha_dia))
+            if override is not None:
+                almuerzo_min = override
+            else:
+                sede_del_dia = regs[0].sede
+                horario_cfg = horarios.get(sede_del_dia) if sede_del_dia else None
+                almuerzo_min = _almuerzo_minutos(fecha_dia, horario_cfg)
+            minutos_reales = max(0, bruto_min - almuerzo_min)
+            sede_item = sede_nombre_filter or regs[0].sede
+
+            items.append(OcupacionRealItem(
+                fecha=fecha_dia.isoformat(),
+                sede=sede_item,
+                agenda=agendas_por_emp_sede.get((emp.id, sede_item)) if sede_item else None,
+                empleado_id=emp.id,
+                cedula=emp.cedula,
+                nombres=emp.nombres,
+                apellidos=emp.apellidos,
+                cargo=emp.cargo,
+                minutos_reales=minutos_reales,
+                sesiones=pares,
+            ))
+
+    return OcupacionRealOut(desde=desde.isoformat(), hasta=hasta.isoformat(), items=items)
 
 

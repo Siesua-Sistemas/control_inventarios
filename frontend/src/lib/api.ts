@@ -1959,6 +1959,35 @@ export async function deleteSedeJornada(id: number): Promise<void> {
   return apiRequest<void>(`/api/v1/jornada/admin/sedes/${id}`, { method: 'DELETE' });
 }
 
+// ── Empleado × Agenda (admin) ──────────────────────────────────────────────────
+
+export interface EmpleadoAgendaRow {
+  empleado_id: number;
+  nombres: string;
+  apellidos: string;
+  cargo: string | null;
+  sede: string;
+  agenda: string | null;
+}
+
+export async function getEmpleadoAgendas(): Promise<EmpleadoAgendaRow[]> {
+  return apiRequest<EmpleadoAgendaRow[]>('/api/v1/jornada/admin/agendas');
+}
+
+export async function setEmpleadoAgenda(empleado_id: number, sede: string, agenda: string): Promise<EmpleadoAgendaRow> {
+  return apiRequest<EmpleadoAgendaRow>('/api/v1/jornada/admin/agendas', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ empleado_id, sede, agenda }),
+  });
+}
+
+export async function quitarEmpleadoAgenda(empleado_id: number, sede: string): Promise<void> {
+  return apiRequest<void>(`/api/v1/jornada/admin/agendas?empleado_id=${empleado_id}&sede=${encodeURIComponent(sede)}`, {
+    method: 'DELETE',
+  });
+}
+
 export async function registrarSalidaManual(
   empleadoId: number,
   fecha: string,
