@@ -33,6 +33,8 @@ from app.schemas.mantenimiento import (
     PasoUpdate,
     PlantillaPasoCreate,
     PlantillaPasoOut,
+    PlantillaPasoUpdate,
+    PlantillaReorder,
 )
 from app.services.mantenimiento_config_service import MantenimientoConfigService
 from app.services.mantenimiento_dashboard_service import MantenimientoDashboardService
@@ -119,6 +121,40 @@ def create_plantilla(
         obligatorio=payload.obligatorio,
     )
     db.add(p)
+    db.commit()
+    db.refresh(p)
+    return p
+
+
+@router.post('/plantillas/reorder', status_code=204)
+def reorder_plantillas(
+    payload: PlantillaReorder,
+    db: Session = Depends(get_db),
+    _user=Depends(require_permissions('mantenimientos:write')),
+):
+    pasos = db.scalars(
+        select(MantenimientoPlantillaPaso).where(MantenimientoPlantillaPaso.id.in_(payload.ids))
+    ).all()
+    by_id = {p.id: p for p in pasos}
+    for idx, pid in enumerate(payload.ids):
+        if pid in by_id:
+            by_id[pid].orden = idx
+    db.commit()
+
+
+@router.patch('/plantillas/{plantilla_id}', response_model=PlantillaPasoOut)
+def update_plantilla(
+    plantilla_id: int,
+    payload: PlantillaPasoUpdate,
+    db: Session = Depends(get_db),
+    _user=Depends(require_permissions('mantenimientos:write')),
+):
+    p = db.scalar(select(MantenimientoPlantillaPaso).where(MantenimientoPlantillaPaso.id == plantilla_id))
+    if not p:
+        raise HTTPException(status_code=404, detail='Plantilla no encontrada')
+    data = payload.model_dump(exclude_unset=True)
+    for field, value in data.items():
+        setattr(p, field, value)
     db.commit()
     db.refresh(p)
     return p

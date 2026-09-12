@@ -970,6 +970,30 @@ export async function createPlantilla(data: {
   });
 }
 
+export async function updatePlantilla(id: number, data: {
+  descripcion?: string;
+  tipo_campo?: TipoCampoPaso;
+  unidad?: string | null;
+  opciones?: string[] | null;
+  valor_min?: number | null;
+  valor_max?: number | null;
+  obligatorio?: boolean;
+}): Promise<PlantillaPasoRow> {
+  return apiRequest<PlantillaPasoRow>(`/api/v1/mantenimientos/plantillas/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function reorderPlantillas(ids: number[]): Promise<void> {
+  await apiRequest<void>('/api/v1/mantenimientos/plantillas/reorder', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids }),
+  });
+}
+
 export async function deletePlantilla(id: number): Promise<void> {
   await apiRequest<void>(`/api/v1/mantenimientos/plantillas/${id}`, { method: 'DELETE' });
 }

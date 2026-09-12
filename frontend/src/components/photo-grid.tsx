@@ -12,7 +12,8 @@ export function PhotoGrid({
   onDelete?: (photoId: number) => Promise<void>;
   uploading?: boolean;
 }) {
-  const fileRef = useRef<HTMLInputElement>(null);
+  const cameraRef = useRef<HTMLInputElement>(null);
+  const galleryRef = useRef<HTMLInputElement>(null);
   const [lightbox, setLightbox] = useState<string | null>(null);
 
   useEffect(() => {
@@ -25,16 +26,26 @@ export function PhotoGrid({
   return (
     <div className="space-y-4">
       {onUpload && (
-        <div className="flex items-center gap-3">
-          <button type="button" onClick={() => fileRef.current?.click()} disabled={uploading}
+        <div className="flex flex-wrap items-center gap-3">
+          <button type="button" onClick={() => cameraRef.current?.click()} disabled={uploading}
             className="rounded-md bg-cyan-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-cyan-400 disabled:opacity-50">
-            {uploading ? 'Subiendo...' : '+ Subir foto'}
+            {uploading ? 'Subiendo...' : '📷 Tomar foto'}
           </button>
-          <input ref={fileRef} type="file" accept="image/*" className="hidden"
+          <button type="button" onClick={() => galleryRef.current?.click()} disabled={uploading}
+            className="rounded-md border border-cyan-500 px-4 py-2 text-sm font-semibold text-cyan-700 hover:bg-cyan-50 disabled:opacity-50 dark:text-cyan-300 dark:hover:bg-cyan-500/10">
+            {uploading ? 'Subiendo...' : '🖼 Subir de galería'}
+          </button>
+          <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="hidden"
             onChange={async (e) => {
               const file = e.target.files?.[0];
               if (file) await onUpload(file);
-              if (fileRef.current) fileRef.current.value = '';
+              if (cameraRef.current) cameraRef.current.value = '';
+            }} />
+          <input ref={galleryRef} type="file" accept="image/*" multiple className="hidden"
+            onChange={async (e) => {
+              const files = Array.from(e.target.files ?? []);
+              for (const file of files) await onUpload(file);
+              if (galleryRef.current) galleryRef.current.value = '';
             }} />
           <span className="text-xs text-slate-500">JPEG, PNG, WebP o GIF</span>
         </div>

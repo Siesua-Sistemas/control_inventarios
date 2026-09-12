@@ -12,7 +12,9 @@ import {
   listEquipmentTipos,
   listMantenimientoConfig,
   listPlantillas,
+  reorderPlantillas,
   updateMantenimientoConfig,
+  updatePlantilla,
   type EquipmentTipo,
   type MantenimientoConfigRow,
   type PlantillaPasoRow,
@@ -51,6 +53,18 @@ export default function MantenimientosConfiguracionPage() {
   const [newObligatorio, setNewObligatorio] = useState(true);
   const [addingPlantilla, setAddingPlantilla] = useState(false);
   const [plantillaMsg, setPlantillaMsg] = useState('');
+
+  // Edición / reordenamiento de pasos existentes
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editDesc, setEditDesc] = useState('');
+  const [editTipoCampo, setEditTipoCampo] = useState<'checkbox' | 'numero' | 'texto' | 'seleccion'>('checkbox');
+  const [editUnidad, setEditUnidad] = useState('');
+  const [editOpciones, setEditOpciones] = useState('');
+  const [editMin, setEditMin] = useState('');
+  const [editMax, setEditMax] = useState('');
+  const [editObligatorio, setEditObligatorio] = useState(true);
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [reordering, setReordering] = useState<number | null>(null);
 
   async function loadConfigs() {
     setConfigLoading(true);
@@ -151,6 +165,65 @@ export default function MantenimientosConfiguracionPage() {
       await loadPlantillas();
     } catch (err) {
       setPlantillaMsg(err instanceof Error ? err.message : 'Error al eliminar');
+    }
+  }
+
+  function startEditPlantilla(paso: PlantillaPasoRow) {
+    setEditingId(paso.id);
+    setEditDesc(paso.descripcion);
+    setEditTipoCampo(paso.tipo_campo);
+    setEditUnidad(paso.unidad ?? '');
+    setEditOpciones((paso.opciones ?? []).join(', '));
+    setEditMin(paso.valor_min ?? '');
+    setEditMax(paso.valor_max ?? '');
+    setEditObligatorio(paso.obligatorio);
+    setPlantillaMsg('');
+  }
+
+  function cancelEditPlantilla() {
+    setEditingId(null);
+  }
+
+  async function saveEditPlantilla(id: number) {
+    if (!editDesc.trim()) return;
+    setSavingEdit(true);
+    setPlantillaMsg('');
+    try {
+      const opcionesArr = editTipoCampo === 'seleccion'
+        ? editOpciones.split(',').map((o) => o.trim()).filter(Boolean)
+        : null;
+      await updatePlantilla(id, {
+        descripcion: editDesc.trim(),
+        tipo_campo: editTipoCampo,
+        unidad: editTipoCampo === 'numero' && editUnidad.trim() ? editUnidad.trim() : null,
+        opciones: opcionesArr,
+        valor_min: editTipoCampo === 'numero' && editMin !== '' ? Number(editMin) : null,
+        valor_max: editTipoCampo === 'numero' && editMax !== '' ? Number(editMax) : null,
+        obligatorio: editObligatorio,
+      });
+      setEditingId(null);
+      await loadPlantillas();
+    } catch (err) {
+      setPlantillaMsg(err instanceof Error ? err.message : 'Error al guardar');
+    } finally {
+      setSavingEdit(false);
+    }
+  }
+
+  async function moveStep(pasosGrupo: PlantillaPasoRow[], index: number, direction: -1 | 1) {
+    const target = index + direction;
+    if (target < 0 || target >= pasosGrupo.length) return;
+    const ids = pasosGrupo.map((p) => p.id);
+    [ids[index], ids[target]] = [ids[target], ids[index]];
+    setReordering(pasosGrupo[index].id);
+    setPlantillaMsg('');
+    try {
+      await reorderPlantillas(ids);
+      await loadPlantillas();
+    } catch (err) {
+      setPlantillaMsg(err instanceof Error ? err.message : 'Error al reordenar');
+    } finally {
+      setReordering(null);
     }
   }
 
@@ -419,29 +492,165 @@ export default function MantenimientosConfiguracionPage() {
                         </h4>
                         <div className="space-y-1.5">
                           {pasos.map((paso, idx) => (
-                            <div key={paso.id} className="flex items-center gap-3 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 dark:border-slate-800 dark:bg-slate-800/40">
-                              <span className="text-xs font-medium text-slate-400 w-5 text-right">{idx + 1}</span>
-                              <span className="flex-1 text-sm text-slate-700 dark:text-slate-300">
-                                {paso.descripcion}
-                                {!paso.obligatorio && <span className="ml-1 text-xs text-slate-400">(opcional)</span>}
-                              </span>
-                              {paso.tipo_campo && paso.tipo_campo !== 'checkbox' && (
-                                <span className="rounded-full bg-cyan-100 px-2 py-0.5 text-[10px] font-medium text-cyan-700 dark:bg-cyan-500/20 dark:text-cyan-300">
-                                  {paso.tipo_campo === 'numero'
-                                    ? `número${paso.unidad ? ` (${paso.unidad})` : ''}${paso.valor_min != null || paso.valor_max != null ? ` · ${paso.valor_min != null ? String(Number(paso.valor_min)) : '−∞'}–${paso.valor_max != null ? String(Number(paso.valor_max)) : '∞'}` : ''}`
-                                    : paso.tipo_campo === 'seleccion'
-                                      ? `selección (${paso.opciones?.length ?? 0})`
-                                      : 'texto'}
+                            editingId === paso.id ? (
+                              <div key={paso.id} className="rounded-lg border border-cyan-300 bg-white p-3 dark:border-cyan-800 dark:bg-slate-800">
+                                <div className="flex flex-wrap items-end gap-3">
+                                  <div className="flex-1 min-w-48 space-y-1">
+                                    <label className="block text-xs font-medium text-slate-600 dark:text-slate-400">Descripción del paso</label>
+                                    <input
+                                      type="text"
+                                      value={editDesc}
+                                      onChange={(e) => setEditDesc(e.target.value)}
+                                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-cyan-500 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                                    />
+                                  </div>
+                                  <div className="space-y-1">
+                                    <label className="block text-xs font-medium text-slate-600 dark:text-slate-400">Tipo de dato</label>
+                                    <select
+                                      value={editTipoCampo}
+                                      onChange={(e) => setEditTipoCampo(e.target.value as typeof editTipoCampo)}
+                                      className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-cyan-500 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                                    >
+                                      <option value="checkbox">Verificación (Sí/No)</option>
+                                      <option value="numero">Número / medición</option>
+                                      <option value="texto">Texto</option>
+                                      <option value="seleccion">Selección</option>
+                                    </select>
+                                  </div>
+                                </div>
+
+                                {(editTipoCampo === 'numero' || editTipoCampo === 'seleccion') && (
+                                  <div className="mt-3 flex flex-wrap items-end gap-3 rounded-lg border border-cyan-200 bg-cyan-50/60 p-3 dark:border-cyan-900/40 dark:bg-slate-900/40">
+                                    {editTipoCampo === 'numero' && (
+                                      <>
+                                        <div className="space-y-1">
+                                          <label className="block text-xs font-medium text-slate-600 dark:text-slate-400">Unidad</label>
+                                          <input
+                                            type="text"
+                                            value={editUnidad}
+                                            onChange={(e) => setEditUnidad(e.target.value)}
+                                            className="w-32 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-cyan-500 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                                          />
+                                        </div>
+                                        <div className="space-y-1">
+                                          <label className="block text-xs font-medium text-slate-600 dark:text-slate-400">Mínimo aceptable</label>
+                                          <input
+                                            type="number"
+                                            step="any"
+                                            value={editMin}
+                                            onChange={(e) => setEditMin(e.target.value)}
+                                            className="w-28 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-cyan-500 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                                          />
+                                        </div>
+                                        <div className="space-y-1">
+                                          <label className="block text-xs font-medium text-slate-600 dark:text-slate-400">Máximo aceptable</label>
+                                          <input
+                                            type="number"
+                                            step="any"
+                                            value={editMax}
+                                            onChange={(e) => setEditMax(e.target.value)}
+                                            className="w-28 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-cyan-500 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                                          />
+                                        </div>
+                                      </>
+                                    )}
+                                    {editTipoCampo === 'seleccion' && (
+                                      <div className="flex-1 min-w-48 space-y-1">
+                                        <label className="block text-xs font-medium text-slate-600 dark:text-slate-400">Opciones (separadas por coma)</label>
+                                        <input
+                                          type="text"
+                                          value={editOpciones}
+                                          onChange={(e) => setEditOpciones(e.target.value)}
+                                          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-cyan-500 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                                        />
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+
+                                <div className="mt-3 flex items-center justify-between">
+                                  <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
+                                    <input
+                                      type="checkbox"
+                                      checked={editObligatorio}
+                                      onChange={(e) => setEditObligatorio(e.target.checked)}
+                                      className="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500 dark:border-slate-600 dark:bg-slate-800"
+                                    />
+                                    Obligatorio
+                                  </label>
+                                  <div className="flex gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={cancelEditPlantilla}
+                                      className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                                    >
+                                      Cancelar
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => saveEditPlantilla(paso.id)}
+                                      disabled={savingEdit || !editDesc.trim()}
+                                      className="rounded-lg bg-cyan-500 px-3 py-1.5 text-xs font-semibold text-slate-950 hover:bg-cyan-400 disabled:opacity-50"
+                                    >
+                                      {savingEdit ? 'Guardando...' : 'Guardar'}
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            ) : (
+                              <div key={paso.id} className="flex items-center gap-3 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 dark:border-slate-800 dark:bg-slate-800/40">
+                                <span className="text-xs font-medium text-slate-400 w-5 text-right">{idx + 1}</span>
+                                <div className="flex flex-col">
+                                  <button
+                                    type="button"
+                                    onClick={() => moveStep(pasos, idx, -1)}
+                                    disabled={idx === 0 || reordering === paso.id}
+                                    className="leading-none text-slate-400 hover:text-cyan-600 disabled:opacity-20 dark:hover:text-cyan-400"
+                                    title="Subir"
+                                  >
+                                    ▲
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => moveStep(pasos, idx, 1)}
+                                    disabled={idx === pasos.length - 1 || reordering === paso.id}
+                                    className="leading-none text-slate-400 hover:text-cyan-600 disabled:opacity-20 dark:hover:text-cyan-400"
+                                    title="Bajar"
+                                  >
+                                    ▼
+                                  </button>
+                                </div>
+                                <span className="flex-1 text-sm text-slate-700 dark:text-slate-300">
+                                  {paso.descripcion}
+                                  {!paso.obligatorio && <span className="ml-1 text-xs text-slate-400">(opcional)</span>}
                                 </span>
-                              )}
-                              <button
-                                type="button"
-                                onClick={() => handleDeletePlantilla(paso.id)}
-                                className="text-xs text-slate-400 hover:text-red-500 dark:hover:text-red-400"
-                              >
-                                ✕
-                              </button>
-                            </div>
+                                {paso.tipo_campo && paso.tipo_campo !== 'checkbox' && (
+                                  <span className="rounded-full bg-cyan-100 px-2 py-0.5 text-[10px] font-medium text-cyan-700 dark:bg-cyan-500/20 dark:text-cyan-300">
+                                    {paso.tipo_campo === 'numero'
+                                      ? `número${paso.unidad ? ` (${paso.unidad})` : ''}${paso.valor_min != null || paso.valor_max != null ? ` · ${paso.valor_min != null ? String(Number(paso.valor_min)) : '−∞'}–${paso.valor_max != null ? String(Number(paso.valor_max)) : '∞'}` : ''}`
+                                      : paso.tipo_campo === 'seleccion'
+                                        ? `selección (${paso.opciones?.length ?? 0})`
+                                        : 'texto'}
+                                  </span>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => startEditPlantilla(paso)}
+                                  className="text-xs text-slate-400 hover:text-cyan-600 dark:hover:text-cyan-400"
+                                  title="Editar"
+                                >
+                                  ✎
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeletePlantilla(paso.id)}
+                                  className="text-xs text-slate-400 hover:text-red-500 dark:hover:text-red-400"
+                                  title="Eliminar"
+                                >
+                                  ✕
+                                </button>
+                              </div>
+                            )
                           ))}
                         </div>
                       </div>

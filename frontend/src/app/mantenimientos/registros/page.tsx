@@ -381,6 +381,9 @@ export default function MantenimientosRegistrosPage() {
                         <span className="font-mono text-xs text-cyan-600 dark:text-cyan-400 shrink-0">{selectedEq.codigo_interno}</span>
                         <span className="text-sm text-slate-800 dark:text-slate-200 truncate">{selectedEq.marca} {selectedEq.modelo}</span>
                         <span className="text-xs text-slate-500 shrink-0">{selectedEq.tipo}</span>
+                        <span className="text-xs text-slate-500 shrink-0">
+                          📍 {selectedEq.sede}{selectedEq.ubicacion ? ` — ${selectedEq.ubicacion}` : ''}
+                        </span>
                       </div>
                       <button type="button" onClick={() => setSelectedEq(null)}
                         className="ml-3 shrink-0 text-xs text-slate-500 hover:text-red-600 dark:hover:text-red-400">✕</button>
@@ -401,10 +404,15 @@ export default function MantenimientosRegistrosPage() {
                           {eqResults.slice(0, 10).map((eq) => (
                             <li key={eq.id}>
                               <button type="button" onClick={() => { setSelectedEq(eq); setEqSearch(''); setEqResults([]); }}
-                                className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm hover:bg-slate-100 dark:hover:bg-slate-800">
-                                <span className="font-mono text-xs text-cyan-600 dark:text-cyan-400 w-20 shrink-0">{eq.codigo_interno}</span>
-                                <span className="font-medium text-slate-800 dark:text-slate-200">{eq.marca} {eq.modelo}</span>
-                                <span className="ml-auto text-xs text-slate-500 shrink-0">{eq.tipo}</span>
+                                className="flex w-full flex-col gap-0.5 px-4 py-2.5 text-left text-sm hover:bg-slate-100 dark:hover:bg-slate-800">
+                                <div className="flex w-full items-center gap-3">
+                                  <span className="font-mono text-xs text-cyan-600 dark:text-cyan-400 w-20 shrink-0">{eq.codigo_interno}</span>
+                                  <span className="font-medium text-slate-800 dark:text-slate-200">{eq.marca} {eq.modelo}</span>
+                                  <span className="ml-auto text-xs text-slate-500 shrink-0">{eq.tipo}</span>
+                                </div>
+                                <span className="pl-[5.25rem] text-xs text-slate-500 dark:text-slate-400">
+                                  📍 {eq.sede}{eq.ubicacion ? ` — ${eq.ubicacion}` : ''}
+                                </span>
                               </button>
                             </li>
                           ))}

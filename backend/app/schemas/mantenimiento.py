@@ -74,6 +74,20 @@ class PlantillaPasoCreate(BaseModel):
     obligatorio: bool = True
 
 
+class PlantillaPasoUpdate(BaseModel):
+    descripcion: str | None = None
+    tipo_campo: str | None = None
+    unidad: str | None = None
+    opciones: list[str] | None = None
+    valor_min: Decimal | None = None
+    valor_max: Decimal | None = None
+    obligatorio: bool | None = None
+
+
+class PlantillaReorder(BaseModel):
+    ids: list[int]
+
+
 class AprobacionCreate(BaseModel):
     aprobado: bool
     comentario: str | None = None
