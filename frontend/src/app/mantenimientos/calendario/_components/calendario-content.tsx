@@ -612,7 +612,11 @@ export function CalendarioContent() {
 
   const handleUpdated = useCallback((updated: MantenimientoRow) => {
     setItems((prev) => prev.map((it) => (it.id === updated.id ? updated : it)));
-    setSelected({ _source: 'mantenimiento', data: updated });
+    setSelected((prev) =>
+      prev && prev._source === 'mantenimiento' && prev.data.id === updated.id
+        ? { _source: 'mantenimiento', data: updated, ocurrencia: prev.ocurrencia }
+        : prev
+    );
   }, []);
 
   // Stats
