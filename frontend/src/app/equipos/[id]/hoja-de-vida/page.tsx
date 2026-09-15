@@ -2256,9 +2256,24 @@ export default function HojaDeVidaPage() {
           {/* Rail: identidad + navegación */}
           <aside className="flex flex-col gap-4 lg:sticky lg:top-6 lg:w-64 lg:shrink-0">
             <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-              <div className="flex h-24 items-center justify-center border-b border-slate-200 bg-gradient-to-br from-cyan-50 to-white dark:border-slate-800 dark:from-cyan-500/10 dark:to-slate-900">
-                <IconDevice className="h-9 w-9 text-cyan-600/80 dark:text-cyan-400/80" />
-              </div>
+              {profile.photos.length > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => setTab('fotos')}
+                  className="block h-24 w-full border-b border-slate-200 dark:border-slate-800"
+                  title="Ver todas las fotos"
+                >
+                  <img
+                    src={`${API_BASE}${profile.photos[0].url}`}
+                    alt={`${eq.marca} ${eq.modelo}`}
+                    className="h-24 w-full object-cover"
+                  />
+                </button>
+              ) : (
+                <div className="flex h-24 items-center justify-center border-b border-slate-200 bg-gradient-to-br from-cyan-50 to-white dark:border-slate-800 dark:from-cyan-500/10 dark:to-slate-900">
+                  <IconDevice className="h-9 w-9 text-cyan-600/80 dark:text-cyan-400/80" />
+                </div>
+              )}
               <div className="p-4">
                 <p className="text-[10px] font-semibold uppercase tracking-widest text-cyan-700 dark:text-cyan-300">{eq.tipo}</p>
                 <h1 className="mt-0.5 text-base font-bold leading-tight text-slate-900 dark:text-white">{eq.marca} {eq.modelo}</h1>
