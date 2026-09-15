@@ -1,5 +1,6 @@
 "use client";
 
+import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 
 import { useAuth } from '@/components/auth-provider';
@@ -266,7 +267,15 @@ export function MantenimientoModal({ mantenimiento: initial, onClose, onUpdate }
             <span className="text-xs text-slate-500">· {m.equipment_sede}</span>
           </div>
           <h2 className="mt-1 text-xl font-bold text-slate-900 dark:text-white">{m.equipment_marca} {m.equipment_modelo}</h2>
-          <p className="font-mono text-sm text-cyan-600 dark:text-cyan-400">{m.equipment_codigo}</p>
+          <div className="flex items-center gap-2">
+            <p className="font-mono text-sm text-cyan-600 dark:text-cyan-400">{m.equipment_codigo}</p>
+            <Link
+              href={`/equipos/${m.equipment_id}/hoja-de-vida`}
+              className="rounded-md border border-slate-300 px-2 py-0.5 text-xs font-medium text-slate-600 hover:border-cyan-500 hover:text-cyan-700 dark:border-slate-700 dark:text-slate-300 dark:hover:border-cyan-600 dark:hover:text-cyan-400"
+            >
+              Ver hoja de vida →
+            </Link>
+          </div>
         </div>
 
         {/* Info grid */}
