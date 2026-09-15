@@ -25,6 +25,7 @@ import {
   firmarTecnico,
   getEquipmentProfile,
   isAuthenticated,
+  listActasPorEquipo,
   listCredenciales,
   listEquipment,
   listEquipmentTipos,
@@ -48,6 +49,7 @@ import {
   type EquipmentPhotoOut,
   type EquipmentProfile,
   type EquipmentTipo,
+  type EquipoTrazabilidadActa,
   type MantenimientoPayload,
   type MantenimientoRow,
   type PasoRow,
@@ -1485,33 +1487,54 @@ const TIPO_ASIG_BADGE: Record<string, string> = {
 };
 
 interface Estadia {
-  id: number;
+  id: string;
   ubicacion: string;
+  detalle: string | null;
   icono: string;
   desde: string;
   hasta: string | null;
 }
 
-function buildTrazabilidad(items: AsignacionRow[]): Estadia[] {
-  const asc = [...items].sort((a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime());
-  return asc.map((m, i) => {
-    let ubicacion: string;
-    let icono: string;
+interface TrazaEvento {
+  id: string;
+  fecha: string;
+  ubicacion: string;
+  detalle: string | null;
+  icono: string;
+}
+
+/**
+ * Combina dos fuentes de movimiento que hoy conviven sin estar conectadas:
+ * el sistema de Asignaciones (entregar/devolver/trasladar) y las actas de bodega
+ * (handoff de custodia firmado, que es lo que el equipo realmente usa en el día a día).
+ */
+function buildTrazabilidad(asignaciones: AsignacionRow[], actas: EquipoTrazabilidadActa[]): Estadia[] {
+  const eventosAsig: TrazaEvento[] = asignaciones.map((m) => {
     if (m.tipo === 'Entrega' && m.empleado_nombre) {
-      ubicacion = m.empleado_nombre;
-      icono = '👤';
-    } else if (m.tipo === 'Entrega') {
-      ubicacion = m.sede_destino ?? m.equipment_sede ?? 'Sede sin registrar';
-      icono = '📍';
-    } else if ((m.tipo === 'Devolución' || m.tipo === 'Traslado') && m.bodega_destino_nombre) {
-      ubicacion = m.bodega_destino_nombre;
-      icono = '🏬';
-    } else {
-      ubicacion = 'Disponible (sin bodega)';
-      icono = '📦';
+      return { id: `asig-${m.id}`, fecha: m.fecha, ubicacion: m.empleado_nombre, detalle: 'Asignación personal', icono: '👤' };
     }
+    if (m.tipo === 'Entrega') {
+      return { id: `asig-${m.id}`, fecha: m.fecha, ubicacion: m.sede_destino ?? m.equipment_sede ?? 'Sede sin registrar', detalle: 'Entrega a sede', icono: '📍' };
+    }
+    if ((m.tipo === 'Devolución' || m.tipo === 'Traslado') && m.bodega_destino_nombre) {
+      return { id: `asig-${m.id}`, fecha: m.fecha, ubicacion: m.bodega_destino_nombre, detalle: m.tipo, icono: '🏬' };
+    }
+    return { id: `asig-${m.id}`, fecha: m.fecha, ubicacion: 'Disponible (sin bodega)', detalle: m.tipo, icono: '📦' };
+  });
+
+  const eventosActa: TrazaEvento[] = actas.map((a) => ({
+    id: `acta-${a.acta_id}`,
+    fecha: a.fecha,
+    ubicacion: a.sede,
+    detalle: `Acta de bodega · recibió ${a.recibe_nombre}${a.novedad ? ` · novedad: ${a.novedad}` : ''}`,
+    icono: '🧾',
+  }));
+
+  const asc = [...eventosAsig, ...eventosActa].sort((a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime());
+
+  return asc.map((e, i) => {
     const next = asc[i + 1];
-    return { id: m.id, ubicacion, icono, desde: m.fecha, hasta: next ? next.fecha : null };
+    return { id: e.id, ubicacion: e.ubicacion, detalle: e.detalle, icono: e.icono, desde: e.fecha, hasta: next ? next.fecha : null };
   }).reverse();
 }
 
@@ -1530,11 +1553,19 @@ function formatDuracion(desdeStr: string, hastaStr: string | null): string {
 
 function AsignacionesTab({ equipmentId }: { equipmentId: number }) {
   const [items, setItems] = useState<AsignacionRow[]>([]);
+  const [actas, setActas] = useState<EquipoTrazabilidadActa[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    listHistorial({ equipment_id: equipmentId, limit: 100 })
-      .then((r) => setItems(r.items))
+    setLoading(true);
+    Promise.all([
+      listHistorial({ equipment_id: equipmentId, limit: 100 }).then((r) => r.items),
+      listActasPorEquipo(equipmentId).catch(() => []),
+    ])
+      .then(([historial, actasEq]) => {
+        setItems(historial);
+        setActas(actasEq);
+      })
       .finally(() => setLoading(false));
   }, [equipmentId]);
 
@@ -1546,7 +1577,7 @@ function AsignacionesTab({ equipmentId }: { equipmentId: number }) {
     );
   }
 
-  if (items.length === 0) {
+  if (items.length === 0 && actas.length === 0) {
     return (
       <div className="py-12 text-center text-slate-500">
         <p>Sin movimientos registrados para este equipo.</p>
@@ -1554,7 +1585,7 @@ function AsignacionesTab({ equipmentId }: { equipmentId: number }) {
     );
   }
 
-  const estadias = buildTrazabilidad(items);
+  const estadias = buildTrazabilidad(items, actas);
 
   return (
     <div className="space-y-6">
@@ -1577,7 +1608,8 @@ function AsignacionesTab({ equipmentId }: { equipmentId: number }) {
                     {e.hasta === null ? `Actual · ${formatDuracion(e.desde, e.hasta)}` : formatDuracion(e.desde, e.hasta)}
                   </span>
                 </div>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
+                {e.detalle && <p className="text-xs text-slate-500 dark:text-slate-400">{e.detalle}</p>}
+                <p className="text-xs text-slate-400 dark:text-slate-500">
                   {new Date(e.desde).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}
                   {' – '}
                   {e.hasta ? new Date(e.hasta).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' }) : 'actualidad'}
@@ -1588,7 +1620,40 @@ function AsignacionesTab({ equipmentId }: { equipmentId: number }) {
         </div>
       </div>
 
-      {/* Detalle de movimientos */}
+      {/* Actas de bodega relacionadas */}
+      {actas.length > 0 && (
+        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+          <div className="border-b border-slate-100 px-5 py-4 dark:border-slate-800">
+            <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200">Actas de bodega relacionadas</h3>
+          </div>
+          <div className="divide-y divide-slate-100 dark:divide-slate-800">
+            {actas.map((a) => (
+              <div key={a.acta_id} className="flex flex-wrap items-center gap-3 px-5 py-3 text-sm">
+                <span className="rounded-full border px-2.5 py-0.5 text-xs font-semibold bg-indigo-100 text-indigo-700 border-indigo-300 dark:bg-indigo-500/20 dark:text-indigo-300 dark:border-indigo-500/30">
+                  {a.tipo === 'bodega' ? 'Bodega' : 'Asignación'}
+                </span>
+                <span className="text-slate-700 dark:text-slate-300">{a.sede}</span>
+                <span className="text-xs text-slate-500 dark:text-slate-400">
+                  {a.entrega_nombre} → {a.recibe_nombre}
+                </span>
+                {a.novedad && <span className="text-xs text-amber-600 dark:text-amber-400">⚠ {a.novedad}</span>}
+                <span className="ml-auto shrink-0 text-xs text-slate-500 dark:text-slate-400">
+                  {new Date(a.fecha).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}
+                </span>
+                <Link
+                  href={`/actas/${a.acta_id}/imprimir`}
+                  className="shrink-0 rounded-md border border-slate-300 px-2.5 py-1 text-xs text-slate-600 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                >
+                  🖨 Ver acta
+                </Link>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Detalle de movimientos (sistema de asignaciones) */}
+      {items.length > 0 && (
       <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
       <table className="min-w-full text-left text-sm">
         <thead className="bg-slate-100 text-xs uppercase tracking-wider text-slate-600 dark:bg-slate-950 dark:text-slate-400">
@@ -1638,6 +1703,7 @@ function AsignacionesTab({ equipmentId }: { equipmentId: number }) {
         </tbody>
       </table>
       </div>
+      )}
     </div>
   );
 }

@@ -51,3 +51,16 @@ class ActaEntregaRow(BaseModel):
 class ActaListResponse(BaseModel):
     total: int
     items: list[ActaEntregaRow]
+
+
+class EquipoTrazabilidadActa(BaseModel):
+    acta_id: int
+    tipo: str
+    titulo: str
+    sede: str
+    bodega_id: int | None
+    entrega_nombre: str
+    recibe_nombre: str
+    fecha: datetime
+    novedad: str | None
+    estado_snapshot: str | None

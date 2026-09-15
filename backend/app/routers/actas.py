@@ -8,7 +8,7 @@ from app.dependencies import get_user_dominios, require_any_permission, require_
 from app.models.bodega import Bodega
 from app.models.equipment import Equipment
 from app.repositories.acta_entrega_repository import ActaEntregaRepository
-from app.schemas.acta_entrega import ActaEntregaCreate, ActaEntregaRow, ActaListResponse
+from app.schemas.acta_entrega import ActaEntregaCreate, ActaEntregaRow, ActaListResponse, EquipoTrazabilidadActa
 from app.utils.csv_export import csv_response
 
 router = APIRouter(prefix='/api/v1/actas', tags=['actas'])
@@ -85,6 +85,36 @@ def list_actas(
         dominios_permitidos=get_user_dominios(user),
     )
     return {'total': total, 'items': [_to_row(a) for a in items]}
+
+
+@router.get('/por-equipo/{equipment_id}', response_model=list[EquipoTrazabilidadActa])
+def actas_por_equipo(
+    equipment_id: int,
+    repo: ActaEntregaRepository = Depends(_repo),
+    user=Depends(require_any_permission('asignaciones:read', 'bodegas:read')),
+):
+    """Actas de bodega/asignación donde este equipo aparece en el snapshot — trazabilidad."""
+    items, _ = repo.list(skip=0, limit=None, dominios_permitidos=get_user_dominios(user))
+    result: list[EquipoTrazabilidadActa] = []
+    for acta in items:
+        for eq in (acta.equipos_snapshot or []):
+            if not isinstance(eq, dict) or eq.get('id') != equipment_id:
+                continue
+            result.append(EquipoTrazabilidadActa(
+                acta_id=acta.id,
+                tipo=acta.tipo,
+                titulo=acta.titulo,
+                sede=acta.sede,
+                bodega_id=acta.bodega_id,
+                entrega_nombre=acta.entrega_nombre,
+                recibe_nombre=acta.recibe_nombre,
+                fecha=acta.fecha,
+                novedad=eq.get('novedad'),
+                estado_snapshot=eq.get('estado'),
+            ))
+            break
+    result.sort(key=lambda r: r.fecha, reverse=True)
+    return result
 
 
 @router.get('/export')

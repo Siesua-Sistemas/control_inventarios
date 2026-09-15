@@ -668,6 +668,23 @@ export async function listActas(filters: {
   return apiRequest(`/api/v1/actas${p.toString() ? '?' + p.toString() : ''}`);
 }
 
+export interface EquipoTrazabilidadActa {
+  acta_id: number;
+  tipo: string;
+  titulo: string;
+  sede: string;
+  bodega_id: number | null;
+  entrega_nombre: string;
+  recibe_nombre: string;
+  fecha: string;
+  novedad: string | null;
+  estado_snapshot: string | null;
+}
+
+export async function listActasPorEquipo(equipmentId: number): Promise<EquipoTrazabilidadActa[]> {
+  return apiRequest(`/api/v1/actas/por-equipo/${equipmentId}`);
+}
+
 export async function exportActasCsv(filters: {
   tipo?: string;
   sede?: string;
