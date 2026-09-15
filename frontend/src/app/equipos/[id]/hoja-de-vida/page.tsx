@@ -57,9 +57,210 @@ import { ESTADO_COLORS } from '@/lib/constants';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
-type Tab = 'ficha' | 'perifericos' | 'fotos' | 'documentos' | 'mantenimiento' | 'asignaciones' | 'credenciales';
+type Tab = 'resumen' | 'ficha' | 'perifericos' | 'fotos' | 'documentos' | 'mantenimiento' | 'asignaciones' | 'credenciales';
+
+// ── Iconos de navegación ────────────────────────────────────────────────────────
+
+function IconResumen({ className = 'h-[17px] w-[17px]' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
+      <rect x="3" y="3" width="7" height="9" rx="1.5" /><rect x="14" y="3" width="7" height="5" rx="1.5" />
+      <rect x="14" y="12" width="7" height="9" rx="1.5" /><rect x="3" y="16" width="7" height="5" rx="1.5" />
+    </svg>
+  );
+}
+function IconFicha({ className = 'h-[17px] w-[17px]' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
+      <path d="M9 3h6l1 3H8l1-3Z" /><rect x="5" y="6" width="14" height="15" rx="2" /><path d="M9 11h6M9 15h6" />
+    </svg>
+  );
+}
+function IconNodes({ className = 'h-[17px] w-[17px]' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
+      <circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1" />
+    </svg>
+  );
+}
+function IconCamera({ className = 'h-[17px] w-[17px]' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
+      <rect x="3" y="7" width="18" height="12" rx="2" /><path d="M8 7V5.5A1.5 1.5 0 0 1 9.5 4h5A1.5 1.5 0 0 1 16 5.5V7" /><circle cx="12" cy="13" r="2.6" />
+    </svg>
+  );
+}
+function IconWrench({ className = 'h-[17px] w-[17px]' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
+      <path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.6 2.6-2-2 2.6-2.6Z" />
+    </svg>
+  );
+}
+function IconHandoff({ className = 'h-[17px] w-[17px]' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
+      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
+    </svg>
+  );
+}
+function IconDoc({ className = 'h-[17px] w-[17px]' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
+      <path d="M7 3h7l4 4v14a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" /><path d="M14 3v4h4" />
+    </svg>
+  );
+}
+function IconKey({ className = 'h-[17px] w-[17px]' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
+      <circle cx="8" cy="15" r="4" /><path d="M11 12l8-8M16 5l2.5 2.5M19 2l3 3" />
+    </svg>
+  );
+}
+function IconDevice({ className = 'h-9 w-9' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <rect x="3" y="7" width="18" height="12" rx="2" /><path d="M8 7V5.5A1.5 1.5 0 0 1 9.5 4h5A1.5 1.5 0 0 1 16 5.5V7" /><circle cx="12" cy="13" r="2.6" />
+    </svg>
+  );
+}
+
+// ── Resumen tab ────────────────────────────────────────────────────────────────
+
+function ResumenTab({
+  profile,
+  equipmentId,
+  onGoTab,
+}: {
+  profile: EquipmentProfile;
+  equipmentId: number;
+  onGoTab: (tab: Tab) => void;
+}) {
+  const eq = profile.equipment;
+  const [proximoMant, setProximoMant] = useState<string | null | undefined>(undefined);
+  const [recientes, setRecientes] = useState<AsignacionRow[]>([]);
+  const [loadingFeed, setLoadingFeed] = useState(true);
+
+  useEffect(() => {
+    listMantenimientos(equipmentId).then((r) => {
+      const conProximo = [...r.items]
+        .sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime())
+        .find((m) => !!m.proximo_mantenimiento);
+      setProximoMant(conProximo?.proximo_mantenimiento ?? null);
+    }).catch(() => setProximoMant(null));
+    listHistorial({ equipment_id: equipmentId, limit: 4 })
+      .then((r) => setRecientes(r.items))
+      .finally(() => setLoadingFeed(false));
+  }, [equipmentId]);
+
+  const diasCalibracion = eq.vencimiento_calibracion
+    ? Math.ceil((new Date(eq.vencimiento_calibracion).getTime() - Date.now()) / 86400000)
+    : null;
+
+  const diasProximoMant = proximoMant
+    ? Math.ceil((new Date(proximoMant).getTime() - Date.now()) / 86400000)
+    : null;
+
+  const asignadoA = eq.empleado_nombre
+    ? eq.empleado_nombre
+    : eq.estado === 'En bodega' ? 'En bodega' : eq.estado === 'Disponible' ? 'Sin asignar' : eq.estado;
+
+  return (
+    <div className="space-y-5">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">Estado</p>
+          <p className="mt-1.5 text-base font-semibold text-slate-800 dark:text-slate-100">{eq.estado}</p>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">Calibración</p>
+          {eq.vencimiento_calibracion ? (
+            <>
+              <p className={`mt-1.5 text-base font-semibold ${diasCalibracion !== null && diasCalibracion < 0 ? 'text-red-600 dark:text-red-400' : diasCalibracion !== null && diasCalibracion <= 30 ? 'text-amber-600 dark:text-amber-400' : 'text-slate-800 dark:text-slate-100'}`}>
+                {new Date(`${eq.vencimiento_calibracion}T00:00:00`).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}
+              </p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                {diasCalibracion !== null && diasCalibracion < 0 ? `Vencida hace ${Math.abs(diasCalibracion)}d` : `En ${diasCalibracion}d`}
+              </p>
+            </>
+          ) : <p className="mt-1.5 text-sm text-slate-400 dark:text-slate-600">No aplica</p>}
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">Próx. mantenimiento</p>
+          {proximoMant === undefined ? (
+            <p className="mt-1.5 text-sm text-slate-400 dark:text-slate-600">Cargando...</p>
+          ) : proximoMant ? (
+            <>
+              <p className={`mt-1.5 text-base font-semibold ${diasProximoMant !== null && diasProximoMant < 0 ? 'text-red-600 dark:text-red-400' : diasProximoMant !== null && diasProximoMant <= 30 ? 'text-amber-600 dark:text-amber-400' : 'text-slate-800 dark:text-slate-100'}`}>
+                {new Date(`${proximoMant}T00:00:00`).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}
+              </p>
+              <button onClick={() => onGoTab('mantenimiento')} className="text-xs text-cyan-600 hover:underline dark:text-cyan-400">Ver mantenimiento →</button>
+            </>
+          ) : <p className="mt-1.5 text-sm text-slate-400 dark:text-slate-600">Sin programar</p>}
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">Garantía</p>
+          <p className="mt-1.5 text-base font-semibold text-slate-800 dark:text-slate-100">
+            {eq.garantia_vence ? new Date(`${eq.garantia_vence}T00:00:00`).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
+          </p>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">Valor en libros</p>
+          <p className="mt-1.5 text-base font-semibold text-slate-800 dark:text-slate-100">
+            {eq.valor ? `$${Number(eq.valor).toLocaleString('es-CO')}` : '—'}
+          </p>
+          {eq.fecha_compra && <p className="text-xs text-slate-500 dark:text-slate-400">Compra {new Date(`${eq.fecha_compra}T00:00:00`).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}</p>}
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">Asignado a</p>
+          <p className="mt-1.5 text-base font-semibold text-slate-800 dark:text-slate-100">{asignadoA}</p>
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+        <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-4 dark:border-slate-800">
+          <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200">Actividad reciente</h3>
+          <button onClick={() => onGoTab('asignaciones')} className="text-xs font-medium text-cyan-600 hover:underline dark:text-cyan-400">Ver historial completo →</button>
+        </div>
+        <div className="p-5">
+          {loadingFeed ? (
+            <div className="flex justify-center py-6">
+              <div className="h-5 w-5 animate-spin rounded-full border-2 border-slate-300 border-t-cyan-500 dark:border-slate-700 dark:border-t-cyan-400" />
+            </div>
+          ) : recientes.length === 0 ? (
+            <p className="py-4 text-center text-sm text-slate-500">Sin movimientos registrados para este equipo.</p>
+          ) : (
+            <ul className="space-y-0">
+              {recientes.map((m, i) => (
+                <li key={m.id} className={`flex items-start gap-3 py-2.5 ${i < recientes.length - 1 ? 'border-b border-slate-100 dark:border-slate-800' : ''}`}>
+                  <span className={`mt-0.5 rounded-full border px-2 py-0.5 text-[11px] font-semibold shrink-0 ${TIPO_ASIG_BADGE[m.tipo] ?? 'bg-slate-200 text-slate-700 border-slate-300 dark:bg-slate-700 dark:text-slate-300 dark:border-slate-600'}`}>
+                    {m.tipo}
+                  </span>
+                  <span className="flex-1 text-sm text-slate-700 dark:text-slate-300">
+                    {m.empleado_nombre ?? m.bodega_destino_nombre ?? (m.tipo === 'Devolución' ? 'Disponible' : '—')}
+                  </span>
+                  <span className="shrink-0 text-xs text-slate-500 dark:text-slate-400">
+                    {new Date(m.fecha).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ── Ficha técnica tab ─────────────────────────────────────────────────────────
+
+function formatSpecValue(field: SpecField, val: unknown): string {
+  if (val === undefined || val === null || val === '') return '—';
+  if (field.type === 'boolean') return val ? 'Sí' : 'No';
+  if (field.type === 'scale') return `${val} / ${field.max ?? 5}`;
+  return String(val);
+}
 
 function FichaTab({
   profile,
@@ -68,6 +269,7 @@ function FichaTab({
   profile: EquipmentProfile;
   onSave: (specs: Record<string, unknown>) => Promise<void>;
 }) {
+  const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<Record<string, unknown>>(profile.equipment.specs ?? {});
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState('');
@@ -76,7 +278,7 @@ function FichaTab({
 
   if (template.length === 0) {
     return (
-      <div className="py-12 text-center text-slate-600 dark:text-slate-400">
+      <div className="rounded-2xl border border-slate-200 bg-white py-12 text-center text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
         No hay ficha técnica definida para el tipo <strong>{profile.equipment.tipo}</strong>.
       </div>
     );
@@ -166,6 +368,7 @@ function FichaTab({
     try {
       await onSave(form);
       setMsg('Ficha guardada correctamente.');
+      setEditing(false);
     } catch (err) {
       setMsg(err instanceof Error ? err.message : 'Error al guardar');
     } finally {
@@ -173,18 +376,57 @@ function FichaTab({
     }
   }
 
+  function cancelEdit() {
+    setForm(profile.equipment.specs ?? {});
+    setMsg('');
+    setEditing(false);
+  }
+
   return (
-    <form onSubmit={handleSubmit} className="space-y-5 max-w-xl">
-      {template.map((field) => renderField(field))}
-      {msg && (
-        <p className={`rounded-md px-3 py-2 text-sm ${msg.includes('Error') ? 'bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-200' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200'}`}>
-          {msg}
-        </p>
-      )}
-      <button type="submit" disabled={saving} className="bg-cyan-500 text-slate-950 font-semibold px-6 py-2 rounded-md hover:bg-cyan-400 disabled:opacity-50">
-        {saving ? 'Guardando...' : 'Guardar ficha'}
-      </button>
-    </form>
+    <div className="rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+      <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-4 dark:border-slate-800">
+        <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200">Ficha técnica</h3>
+        {!editing && (
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:border-cyan-500 hover:text-cyan-700 dark:border-slate-700 dark:text-slate-300 dark:hover:border-cyan-600 dark:hover:text-cyan-400"
+          >
+            ✎ Editar ficha
+          </button>
+        )}
+      </div>
+
+      <div className="p-5">
+        {editing ? (
+          <form onSubmit={handleSubmit} className="space-y-5 max-w-xl">
+            {template.map((field) => renderField(field))}
+            {msg && (
+              <p className={`rounded-md px-3 py-2 text-sm ${msg.includes('Error') ? 'bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-200' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200'}`}>
+                {msg}
+              </p>
+            )}
+            <div className="flex gap-3 border-t border-slate-100 pt-4 dark:border-slate-800">
+              <button type="submit" disabled={saving} className="bg-cyan-500 text-slate-950 font-semibold px-6 py-2 rounded-md hover:bg-cyan-400 disabled:opacity-50">
+                {saving ? 'Guardando...' : 'Guardar cambios'}
+              </button>
+              <button type="button" onClick={cancelEdit} className="rounded-md bg-slate-200 px-5 py-2 text-sm text-slate-800 hover:bg-slate-300 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600">
+                Cancelar
+              </button>
+            </div>
+          </form>
+        ) : (
+          <div className="grid grid-cols-2 gap-x-6 gap-y-5 sm:grid-cols-3">
+            {template.map((field) => (
+              <div key={field.key}>
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">{field.label}</p>
+                <p className="mt-0.5 text-sm font-medium text-slate-800 dark:text-slate-200">{formatSpecValue(field, form[field.key])}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -1793,7 +2035,7 @@ export default function HojaDeVidaPage() {
   const [profile, setProfile] = useState<EquipmentProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [tab, setTab] = useState<Tab>('ficha');
+  const [tab, setTab] = useState<Tab>('resumen');
 
   useEffect(() => {
     if (!isAuthenticated()) {
@@ -1841,14 +2083,15 @@ export default function HojaDeVidaPage() {
 
   const eq = profile.equipment;
 
-  const tabs: { id: Tab; label: string }[] = [
-    { id: 'ficha', label: 'Ficha técnica' },
-    { id: 'perifericos', label: `Periféricos (${profile.children.length})` },
-    { id: 'fotos', label: `Fotos (${profile.photos.length})` },
-    { id: 'documentos', label: `Documentos (${profile.documentos.length})` },
-    { id: 'mantenimiento', label: 'Mantenimiento' },
-    { id: 'asignaciones', label: 'Asignaciones' },
-    ...(canViewCredenciales ? [{ id: 'credenciales' as Tab, label: 'Credenciales' }] : []),
+  const navItems: { id: Tab; label: string; icon: (p: { className?: string }) => JSX.Element; count?: number }[] = [
+    { id: 'resumen', label: 'Resumen', icon: IconResumen },
+    { id: 'ficha', label: 'Ficha técnica', icon: IconFicha },
+    { id: 'perifericos', label: 'Periféricos', icon: IconNodes, count: profile.children.length },
+    { id: 'fotos', label: 'Fotos', icon: IconCamera, count: profile.photos.length },
+    { id: 'mantenimiento', label: 'Mantenimiento', icon: IconWrench },
+    { id: 'asignaciones', label: 'Asignaciones', icon: IconHandoff },
+    { id: 'documentos', label: 'Documentos', icon: IconDoc, count: profile.documentos.length },
+    ...(canViewCredenciales ? [{ id: 'credenciales' as Tab, label: 'Credenciales', icon: IconKey }] : []),
   ];
 
   return (
@@ -1862,107 +2105,114 @@ export default function HojaDeVidaPage() {
           <span className="text-slate-700 dark:text-slate-300">{eq.codigo_interno}</span>
         </nav>
 
-        {/* Header */}
-        <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <p className="text-xs uppercase tracking-[0.3em] text-cyan-700 dark:text-cyan-300">{eq.tipo}</p>
-            <h1 className="mt-1 text-3xl font-bold">{eq.marca} {eq.modelo}</h1>
-            <div className="mt-2 flex flex-wrap items-center gap-3">
-
-              <span className="text-slate-500">·</span>
-              <span className="font-mono text-xs text-slate-600 dark:text-slate-400">S/N: {eq.serial}</span>
-              <span className="font-mono text-sm text-cyan-600 dark:text-cyan-400">{eq.codigo_interno}</span>
-
-              <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${ESTADO_COLORS[eq.estado] ?? 'bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-300'}`}>
-                {eq.estado}
-              </span>
-              <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                eq.criticidad === 'Alta' ? 'bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-300' :
-                eq.criticidad === 'Baja' ? 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300' :
-                'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300'
-              }`}>
-                {eq.criticidad}
-              </span>
+        <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
+          {/* Rail: identidad + navegación */}
+          <aside className="flex flex-col gap-4 lg:sticky lg:top-6 lg:w-64 lg:shrink-0">
+            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+              <div className="flex h-24 items-center justify-center border-b border-slate-200 bg-gradient-to-br from-cyan-50 to-white dark:border-slate-800 dark:from-cyan-500/10 dark:to-slate-900">
+                <IconDevice className="h-9 w-9 text-cyan-600/80 dark:text-cyan-400/80" />
+              </div>
+              <div className="p-4">
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-cyan-700 dark:text-cyan-300">{eq.tipo}</p>
+                <h1 className="mt-0.5 text-base font-bold leading-tight text-slate-900 dark:text-white">{eq.marca} {eq.modelo}</h1>
+                <div className="mt-2 flex flex-wrap items-center gap-x-1.5 gap-y-1 font-mono text-[11px] text-slate-500 dark:text-slate-400">
+                  <span>{eq.codigo_interno}</span><span>·</span><span>S/N {eq.serial}</span>
+                </div>
+                <div className="mt-2.5 flex flex-wrap gap-1.5">
+                  <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${ESTADO_COLORS[eq.estado] ?? 'bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-300'}`}>
+                    {eq.estado}
+                  </span>
+                  <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                    eq.criticidad === 'Alta' ? 'bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-300' :
+                    eq.criticidad === 'Baja' ? 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300' :
+                    'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300'
+                  }`}>
+                    {eq.criticidad}
+                  </span>
+                </div>
+                {(eq.sede || eq.empleado_nombre) && (
+                  <div className="mt-3 space-y-1 border-t border-slate-100 pt-3 text-xs leading-relaxed text-slate-600 dark:border-slate-800 dark:text-slate-400">
+                    {eq.sede && <p><span className="text-slate-400 dark:text-slate-500">Sede</span> {eq.sede}{eq.ubicacion ? ` — ${eq.ubicacion}` : ''}</p>}
+                    {eq.empleado_nombre && <p><span className="text-slate-400 dark:text-slate-500">Responsable</span> {eq.empleado_nombre}</p>}
+                  </div>
+                )}
+                <Link
+                  href={`/equipos/${equipmentId}/editar`}
+                  className="mt-3 block rounded-md border border-slate-300 px-3 py-1.5 text-center text-xs font-semibold text-slate-600 hover:border-cyan-500 hover:text-cyan-700 dark:border-slate-700 dark:text-slate-300 dark:hover:border-cyan-600 dark:hover:text-cyan-400"
+                >
+                  Editar equipo
+                </Link>
+              </div>
             </div>
-            <div className="mt-1 flex flex-wrap gap-4 text-xs text-slate-500">
-              {eq.sede && <span>Sede: <span className="text-slate-700 dark:text-slate-300">{eq.sede}</span></span>}
-              {eq.ubicacion && <span>Ubicación: <span className="text-slate-700 dark:text-slate-300">{eq.ubicacion}</span></span>}
-              {eq.garantia_vence && <span>Garantía hasta: <span className="text-slate-700 dark:text-slate-300">{eq.garantia_vence}</span></span>}
-              {eq.vencimiento_calibracion && (() => {
-                const dias = Math.ceil((new Date(eq.vencimiento_calibracion).getTime() - Date.now()) / 86400000);
-                const cls = dias < 0 ? 'text-red-600 dark:text-red-400' : dias <= 30 ? 'text-amber-600 dark:text-amber-400' : 'text-slate-700 dark:text-slate-300';
+
+            <nav className="rounded-2xl border border-slate-200 bg-white p-1.5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+              {navItems.map((t) => {
+                const Icon = t.icon;
+                const active = tab === t.id;
                 return (
-                  <span>Calibración vence: <span className={cls}>{eq.vencimiento_calibracion}{dias < 0 ? ` (vencida ${Math.abs(dias)}d)` : dias <= 30 ? ` (en ${dias}d)` : ''}</span></span>
+                  <button
+                    key={t.id}
+                    onClick={() => setTab(t.id)}
+                    className={`mb-0.5 flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-[13px] font-medium transition-colors last:mb-0 ${
+                      active
+                        ? 'bg-cyan-50 text-cyan-700 dark:bg-cyan-500/10 dark:text-cyan-300'
+                        : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
+                    }`}
+                  >
+                    <Icon className={`h-[17px] w-[17px] shrink-0 ${active ? 'text-cyan-600 dark:text-cyan-400' : 'text-slate-400 dark:text-slate-500'}`} />
+                    <span className="flex-1">{t.label}</span>
+                    {t.count !== undefined && <span className="text-xs text-slate-400 dark:text-slate-500">{t.count}</span>}
+                  </button>
                 );
-              })()}
-            </div>
+              })}
+            </nav>
+          </aside>
+
+          {/* Panel activo */}
+          <div className="min-w-0 flex-1">
+            {tab === 'resumen' && (
+              <ResumenTab profile={profile} equipmentId={equipmentId} onGoTab={setTab} />
+            )}
+            {tab === 'ficha' && (
+              <FichaTab
+                profile={profile}
+                onSave={async (specs) => {
+                  await updateEquipmentSpecs(equipmentId, specs);
+                  await fetchProfile();
+                }}
+              />
+            )}
+            {tab === 'perifericos' && (
+              <PerifeicosTab
+                equipmentId={equipmentId}
+                profile={profile}
+                onRefresh={fetchProfile}
+              />
+            )}
+            {tab === 'fotos' && (
+              <FotosTab
+                equipmentId={equipmentId}
+                photos={profile.photos}
+                onRefresh={fetchProfile}
+              />
+            )}
+            {tab === 'documentos' && (
+              <DocumentosTab
+                equipmentId={equipmentId}
+                documentos={profile.documentos}
+                onRefresh={fetchProfile}
+              />
+            )}
+            {tab === 'mantenimiento' && (
+              <MantenimientoTab equipmentId={equipmentId} />
+            )}
+            {tab === 'asignaciones' && (
+              <AsignacionesTab equipmentId={equipmentId} />
+            )}
+            {tab === 'credenciales' && canViewCredenciales && (
+              <CredencialesTab equipmentId={equipmentId} />
+            )}
           </div>
-          <Link
-            href={`/equipos/${equipmentId}/editar`}
-            className="rounded-md bg-slate-200 px-4 py-2 text-sm text-slate-800 hover:bg-slate-300 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600"
-          >
-            Editar equipo
-          </Link>
-        </div>
-
-        {/* Tabs */}
-        <div className="mb-6 flex gap-1 border-b border-slate-200 dark:border-slate-800">
-          {tabs.map((t) => (
-            <button
-              key={t.id}
-              onClick={() => setTab(t.id)}
-              className={`px-4 py-2.5 text-sm font-medium transition-colors ${
-                tab === t.id
-                  ? 'border-b-2 border-cyan-500 text-cyan-700 dark:border-cyan-400 dark:text-cyan-300'
-                  : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200'
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Tab content */}
-        <div className="flex-1">
-          {tab === 'ficha' && (
-            <FichaTab
-              profile={profile}
-              onSave={async (specs) => {
-                await updateEquipmentSpecs(equipmentId, specs);
-                await fetchProfile();
-              }}
-            />
-          )}
-          {tab === 'perifericos' && (
-            <PerifeicosTab
-              equipmentId={equipmentId}
-              profile={profile}
-              onRefresh={fetchProfile}
-            />
-          )}
-          {tab === 'fotos' && (
-            <FotosTab
-              equipmentId={equipmentId}
-              photos={profile.photos}
-              onRefresh={fetchProfile}
-            />
-          )}
-          {tab === 'documentos' && (
-            <DocumentosTab
-              equipmentId={equipmentId}
-              documentos={profile.documentos}
-              onRefresh={fetchProfile}
-            />
-          )}
-          {tab === 'mantenimiento' && (
-            <MantenimientoTab equipmentId={equipmentId} />
-          )}
-          {tab === 'asignaciones' && (
-            <AsignacionesTab equipmentId={equipmentId} />
-          )}
-          {tab === 'credenciales' && canViewCredenciales && (
-            <CredencialesTab equipmentId={equipmentId} />
-          )}
         </div>
       </main>
     </>

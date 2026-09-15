@@ -7,6 +7,7 @@ import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { EquipoModal } from '@/components/equipo-modal';
 import { EmpleadoAutocomplete } from '@/components/empleado-autocomplete';
 import { useAuth } from '@/components/auth-provider';
+import { MovimientosTab } from '@/components/movimientos-tab';
 import { NavBar } from '@/components/nav-bar';
 import {
   devolver, entregarMultiple, isAuthenticated, listActas, trasladar,
@@ -515,7 +516,7 @@ function AsignacionesContent() {
   const canDevolverSinActa = authLoading || hasPermission('asignaciones:devolver_sin_acta');
   const canEntregar = authLoading || hasPermission('asignaciones:write') || hasPermission('asignaciones:entregar');
 
-  const [tab, setTab] = useState<'traslados' | 'asignaciones'>('traslados');
+  const [tab, setTab] = useState<'traslados' | 'asignaciones' | 'historial'>('traslados');
   const [activas, setActivas] = useState<AsignacionRow[]>([]);
   const [equiposDisponibles, setEquiposDisponibles] = useState<EquipmentRow[]>([]);
   const [bodegas, setBodegas] = useState<BodegaRow[]>([]);
@@ -575,6 +576,7 @@ function AsignacionesContent() {
   const TABS = [
     { id: 'traslados' as const, label: `Traslados (${traslados.length})` },
     { id: 'asignaciones' as const, label: `Asignaciones (${personales.length})` },
+    { id: 'historial' as const, label: 'Historial de entregas' },
   ];
 
   return (
@@ -716,6 +718,16 @@ function AsignacionesContent() {
               onDevolver={setDevolverAsig}
               onClickEquipo={setModalEquipoId}
             />
+          </>
+        )}
+
+        {/* ─── Tab Historial de entregas ─── */}
+        {tab === 'historial' && (
+          <>
+            <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">
+              Todos los movimientos registrados: entregas (incluye las hechas desde bodega), devoluciones y traslados.
+            </p>
+            <MovimientosTab />
           </>
         )}
       </main>
