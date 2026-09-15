@@ -32,6 +32,7 @@ def _to_out(a: Asignacion) -> AsignacionOut:
         equipment_marca=eq.marca,
         equipment_modelo=eq.modelo,
         equipment_sede=eq.sede,
+        sede_destino=a.sede_destino,
         empleado_id=emp.id if emp else None,
         empleado_nombre=f'{emp.nombres} {emp.apellidos}' if emp else None,
         empleado_cedula=emp.cedula if emp else None,
@@ -75,16 +76,8 @@ class AsignacionService:
             obs = f'Responsable: {payload.responsable_nombre}' + (f' | {obs}' if obs else '')
 
         estado_antes = equipo.estado
-        asignacion = Asignacion(
-            equipment_id=equipo.id,
-            tipo=TIPO_ENTREGA,
-            empleado_id=empleado.id if empleado else None,
-            bodega_origen_id=payload.bodega_origen_id or equipo.bodega_id,
-            estado_antes=estado_antes,
-            estado_despues='Asignado',
-            observaciones=obs or None,
-            created_by_id=created_by_id,
-        )
+        bodega_origen_id = payload.bodega_origen_id or equipo.bodega_id
+
         equipo.estado = 'Asignado'
         equipo.empleado_id = empleado.id if empleado else None
         equipo.bodega_id = None
@@ -92,25 +85,41 @@ class AsignacionService:
             equipo.sede = payload.sede_destino
         self.eq_repo.update(equipo)
 
+        asignacion = Asignacion(
+            equipment_id=equipo.id,
+            tipo=TIPO_ENTREGA,
+            empleado_id=empleado.id if empleado else None,
+            bodega_origen_id=bodega_origen_id,
+            sede_destino=payload.sede_destino or equipo.sede,
+            estado_antes=estado_antes,
+            estado_despues='Asignado',
+            observaciones=obs or None,
+            created_by_id=created_by_id,
+        )
+
         # Cascade to children (peripherals)
         for child in self.eq_repo.get_children(equipo.id):
             if child.estado in ESTADOS_ENTREGABLES:
-                child_asig = Asignacion(
-                    equipment_id=child.id,
-                    tipo=TIPO_ENTREGA,
-                    empleado_id=empleado.id if empleado else None,
-                    bodega_origen_id=child.bodega_id,
-                    estado_antes=child.estado,
-                    estado_despues='Asignado',
-                    observaciones=f'Periférico de {equipo.codigo_interno}',
-                    created_by_id=created_by_id,
-                )
+                child_bodega_origen_id = child.bodega_id
+                child_estado_antes = child.estado
                 child.estado = 'Asignado'
                 child.empleado_id = empleado.id if empleado else None
                 child.bodega_id = None
                 if payload.sede_destino:
                     child.sede = payload.sede_destino
                 self.eq_repo.update(child)
+
+                child_asig = Asignacion(
+                    equipment_id=child.id,
+                    tipo=TIPO_ENTREGA,
+                    empleado_id=empleado.id if empleado else None,
+                    bodega_origen_id=child_bodega_origen_id,
+                    sede_destino=payload.sede_destino or child.sede,
+                    estado_antes=child_estado_antes,
+                    estado_despues='Asignado',
+                    observaciones=f'Periférico de {equipo.codigo_interno}',
+                    created_by_id=created_by_id,
+                )
                 self.repo.create(child_asig)
 
         return _to_out(self.repo.create(asignacion))

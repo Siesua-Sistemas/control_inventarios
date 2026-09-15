@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { useAuth } from '@/components/auth-provider';
 import { EquipoModal } from '@/components/equipo-modal';
@@ -17,6 +17,8 @@ const TIPO_BADGE: Record<string, string> = {
   'Traslado': 'bg-purple-100 text-purple-700 border-purple-300 dark:bg-purple-500/20 dark:text-purple-300 dark:border-purple-500/30',
 };
 
+const GROUP_LIMIT = 500;
+
 type MovSortField = 'fecha' | 'tipo' | 'equipo' | 'destino' | 'estado' | 'registrado';
 
 function movSortValue(m: AsignacionRow, field: MovSortField): string | number {
@@ -24,10 +26,59 @@ function movSortValue(m: AsignacionRow, field: MovSortField): string | number {
     case 'fecha': return m.fecha;
     case 'tipo': return m.tipo;
     case 'equipo': return `${m.equipment_codigo} ${m.equipment_marca} ${m.equipment_modelo}`;
-    case 'destino': return m.empleado_nombre ?? m.bodega_destino_nombre ?? '';
+    case 'destino': return m.empleado_nombre ?? m.sede_destino ?? m.bodega_destino_nombre ?? '';
     case 'estado': return m.estado_despues;
     case 'registrado': return m.created_by_nombre;
   }
+}
+
+function DestinoCell({ m }: { m: AsignacionRow }) {
+  if (m.tipo === 'Devolución' || m.tipo === 'Traslado') {
+    if (m.bodega_destino_nombre) {
+      return (
+        <>
+          <p className="text-xs text-slate-400 dark:text-slate-500">→ Bodega</p>
+          <p className="text-slate-700 dark:text-slate-300">{m.bodega_destino_nombre}</p>
+        </>
+      );
+    }
+    if (m.tipo === 'Devolución') {
+      return <span className="text-slate-500 dark:text-slate-400 italic text-xs">→ Disponible</span>;
+    }
+    return <span className="text-slate-400 dark:text-slate-600">—</span>;
+  }
+  if (m.empleado_nombre) {
+    return (
+      <>
+        <p className="text-slate-700 dark:text-slate-300">{m.empleado_nombre}</p>
+        {m.empleado_cedula && <p className="text-xs text-slate-500">{m.empleado_cedula}</p>}
+      </>
+    );
+  }
+  const sede = m.sede_destino ?? m.equipment_sede;
+  if (sede) {
+    return (
+      <>
+        <p className="text-xs text-slate-400 dark:text-slate-500">→ Sede</p>
+        <p className="text-slate-700 dark:text-slate-300">{sede}</p>
+      </>
+    );
+  }
+  return <span className="text-slate-500 dark:text-slate-600">—</span>;
+}
+
+/** Grupo de trazabilidad: sede/bodega a la que llegó el equipo, o "Personal" si fue asignación a una persona sin sede registrada. */
+function grupoDe(m: AsignacionRow): string {
+  if ((m.tipo === 'Devolución' || m.tipo === 'Traslado') && m.bodega_destino_nombre) {
+    return `🏬 ${m.bodega_destino_nombre}`;
+  }
+  if (m.tipo === 'Entrega') {
+    const sede = m.sede_destino ?? m.equipment_sede;
+    if (sede) return `📍 ${sede}`;
+    if (m.empleado_nombre) return '👤 Asignación personal (sin sede)';
+  }
+  if (m.tipo === 'Devolución') return 'Disponible (sin bodega)';
+  return 'Sin ubicación registrada';
 }
 
 export function MovimientosTab({ equipmentId }: { equipmentId?: number } = {}) {
@@ -44,6 +95,7 @@ export function MovimientosTab({ equipmentId }: { equipmentId?: number } = {}) {
   const [sortField, setSortField] = useState<MovSortField>('fecha');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [exporting, setExporting] = useState(false);
+  const [groupBySede, setGroupBySede] = useState(false);
   const PAGE_SIZE = 50;
 
   const toggleSort = (field: MovSortField) => {
@@ -55,7 +107,7 @@ export function MovimientosTab({ equipmentId }: { equipmentId?: number } = {}) {
     }
   };
 
-  const load = async (tipo = filterTipo, desde = filterDesde, hasta = filterHasta, p = page) => {
+  const load = async (tipo = filterTipo, desde = filterDesde, hasta = filterHasta, p = page, grouped = groupBySede) => {
     setLoading(true);
     try {
       const r = await listHistorial({
@@ -63,8 +115,8 @@ export function MovimientosTab({ equipmentId }: { equipmentId?: number } = {}) {
         tipo: tipo || undefined,
         desde: desde || undefined,
         hasta: hasta || undefined,
-        skip: p * PAGE_SIZE,
-        limit: PAGE_SIZE,
+        skip: grouped ? 0 : p * PAGE_SIZE,
+        limit: grouped ? GROUP_LIMIT : PAGE_SIZE,
       });
       setItems(r.items);
       setTotal(r.total);
@@ -76,6 +128,27 @@ export function MovimientosTab({ equipmentId }: { equipmentId?: number } = {}) {
   const handleFilter = (e: React.FormEvent) => { e.preventDefault(); setPage(0); load(filterTipo, filterDesde, filterHasta, 0); };
   const clearFilters = () => { setFilterTipo(''); setFilterDesde(''); setFilterHasta(''); setPage(0); load('', '', '', 0); };
   const goPage = (p: number) => { setPage(p); load(filterTipo, filterDesde, filterHasta, p); };
+  const toggleGroupBySede = () => {
+    const next = !groupBySede;
+    setGroupBySede(next);
+    setPage(0);
+    load(filterTipo, filterDesde, filterHasta, 0, next);
+  };
+
+  const grouped = useMemo(() => {
+    const map = new Map<string, AsignacionRow[]>();
+    for (const m of items) {
+      const key = grupoDe(m);
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(m);
+    }
+    return [...map.entries()]
+      .map(([sede, rows]) => ({
+        sede,
+        rows: [...rows].sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime()),
+      }))
+      .sort((a, b) => b.rows.length - a.rows.length);
+  }, [items]);
 
   const handleExportCsv = async () => {
     setExporting(true);
@@ -125,6 +198,17 @@ export function MovimientosTab({ equipmentId }: { equipmentId?: number } = {}) {
             Limpiar
           </button>
         )}
+        <button
+          type="button"
+          onClick={toggleGroupBySede}
+          className={`rounded-lg border px-4 py-2 text-sm font-medium transition-colors ${
+            groupBySede
+              ? 'border-indigo-500 bg-indigo-600 text-white hover:bg-indigo-500'
+              : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
+          } ${canExport ? '' : 'ml-auto'}`}
+        >
+          {groupBySede ? '✓ Agrupado por sede' : 'Agrupar por sede'}
+        </button>
         {canExport && (
           <button type="button" onClick={handleExportCsv} disabled={exporting}
             className="ml-auto rounded-lg border border-slate-300 bg-slate-100 px-4 py-2 text-sm text-slate-700 hover:bg-slate-200 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 transition-colors">
@@ -133,6 +217,58 @@ export function MovimientosTab({ equipmentId }: { equipmentId?: number } = {}) {
         )}
       </form>
 
+      {groupBySede ? (
+        /* ── Vista agrupada por sede/bodega — trazabilidad ────────────────── */
+        <div className="space-y-4">
+          {loading ? (
+            <div className="flex justify-center py-12">
+              <div className="h-6 w-6 animate-spin rounded-full border-2 border-slate-300 border-t-indigo-500 dark:border-slate-700 dark:border-t-indigo-400" />
+            </div>
+          ) : grouped.length === 0 ? (
+            <div className="rounded-2xl border border-slate-200 bg-white py-12 text-center text-slate-500 dark:border-slate-800 dark:bg-slate-900">Sin movimientos.</div>
+          ) : (
+            <>
+              {items.length >= GROUP_LIMIT && (
+                <p className="text-xs text-amber-600 dark:text-amber-400">
+                  Mostrando los últimos {GROUP_LIMIT} movimientos. Usa los filtros de fecha para acotar el rango.
+                </p>
+              )}
+              {grouped.map(({ sede, rows }) => (
+                <div key={sede} className="overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+                  <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-950">
+                    <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-200">{sede}</h4>
+                    <span className="rounded-full bg-slate-200 px-2 py-0.5 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-400">
+                      {rows.length} movimiento{rows.length !== 1 ? 's' : ''}
+                    </span>
+                  </div>
+                  <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                    {rows.map((m) => (
+                      <div key={m.id} className="flex flex-wrap items-center gap-3 px-4 py-2.5 text-sm">
+                        <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold shrink-0 ${TIPO_BADGE[m.tipo] ?? 'bg-slate-200 text-slate-700 border-slate-300 dark:bg-slate-700 dark:text-slate-300 dark:border-slate-600'}`}>
+                          {m.tipo}
+                        </span>
+                        {!equipmentId && (
+                          <button onClick={() => setModalEquipoId(m.equipment_id)}
+                            className="font-mono text-xs font-bold text-cyan-600 hover:text-cyan-700 dark:text-cyan-400 dark:hover:text-cyan-300 hover:underline">
+                            {m.equipment_codigo}
+                          </button>
+                        )}
+                        <span className="text-slate-700 dark:text-slate-300">
+                          {m.empleado_nombre ?? (!equipmentId ? `${m.equipment_marca} ${m.equipment_modelo}` : '')}
+                        </span>
+                        <span className="ml-auto shrink-0 text-xs text-slate-500 dark:text-slate-400">
+                          {new Date(m.fecha).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
+        </div>
+      ) : (
+      <>
       {/* Tabla */}
       <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
         <table className="min-w-full text-left text-sm">
@@ -179,25 +315,7 @@ export function MovimientosTab({ equipmentId }: { equipmentId?: number } = {}) {
                   </td>
                 )}
                 <td className="px-4 py-3 text-sm">
-                  {m.tipo === 'Devolución' || m.tipo === 'Traslado' ? (
-                    m.bodega_destino_nombre ? (
-                      <>
-                        <p className="text-xs text-slate-400 dark:text-slate-500">→ Bodega</p>
-                        <p className="text-slate-700 dark:text-slate-300">{m.bodega_destino_nombre}</p>
-                      </>
-                    ) : m.tipo === 'Devolución' ? (
-                      <span className="text-slate-500 dark:text-slate-400 italic text-xs">→ Disponible</span>
-                    ) : (
-                      <span className="text-slate-400 dark:text-slate-600">—</span>
-                    )
-                  ) : m.empleado_nombre ? (
-                    <>
-                      <p className="text-slate-700 dark:text-slate-300">{m.empleado_nombre}</p>
-                      {m.empleado_cedula && <p className="text-xs text-slate-500">{m.empleado_cedula}</p>}
-                    </>
-                  ) : (
-                    <span className="text-slate-500 dark:text-slate-600">—</span>
-                  )}
+                  <DestinoCell m={m} />
                 </td>
                 <td className="px-4 py-3 text-xs text-slate-600 dark:text-slate-400">
                   {m.estado_antes && <span className="text-slate-500 dark:text-slate-600">{m.estado_antes} → </span>}
@@ -228,6 +346,8 @@ export function MovimientosTab({ equipmentId }: { equipmentId?: number } = {}) {
             </div>
           )}
         </div>
+      )}
+      </>
       )}
     </div>
   );

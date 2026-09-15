@@ -306,6 +306,9 @@ def _run_migrations() -> None:
 
         # Dominio de tickets (IT / Bioingeniería / General) — existentes quedan como IT
         conn.execute(text("ALTER TABLE tickets ADD COLUMN IF NOT EXISTS dominio VARCHAR(30) NOT NULL DEFAULT 'IT'"))
+
+        # Trazabilidad de asignaciones — sede destino histórica (entregas a sede o a persona)
+        conn.execute(text('ALTER TABLE asignaciones ADD COLUMN IF NOT EXISTS sede_destino VARCHAR(120)'))
         conn.commit()
 
 

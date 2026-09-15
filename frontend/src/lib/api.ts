@@ -408,6 +408,7 @@ export interface AsignacionRow {
   equipment_marca: string;
   equipment_modelo: string;
   equipment_sede: string;
+  sede_destino: string | null;
   empleado_id: number | null;
   empleado_nombre: string | null;
   empleado_cedula: string | null;

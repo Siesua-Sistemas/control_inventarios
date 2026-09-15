@@ -48,6 +48,7 @@ class AsignacionOut(BaseModel):
     equipment_marca: str
     equipment_modelo: str
     equipment_sede: str
+    sede_destino: str | None = None
 
     empleado_id: int | None
     empleado_nombre: str | None

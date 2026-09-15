@@ -1484,6 +1484,50 @@ const TIPO_ASIG_BADGE: Record<string, string> = {
   'Traslado': 'bg-purple-100 text-purple-700 border-purple-300 dark:bg-purple-500/20 dark:text-purple-300 dark:border-purple-500/30',
 };
 
+interface Estadia {
+  id: number;
+  ubicacion: string;
+  icono: string;
+  desde: string;
+  hasta: string | null;
+}
+
+function buildTrazabilidad(items: AsignacionRow[]): Estadia[] {
+  const asc = [...items].sort((a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime());
+  return asc.map((m, i) => {
+    let ubicacion: string;
+    let icono: string;
+    if (m.tipo === 'Entrega' && m.empleado_nombre) {
+      ubicacion = m.empleado_nombre;
+      icono = '👤';
+    } else if (m.tipo === 'Entrega') {
+      ubicacion = m.sede_destino ?? m.equipment_sede ?? 'Sede sin registrar';
+      icono = '📍';
+    } else if ((m.tipo === 'Devolución' || m.tipo === 'Traslado') && m.bodega_destino_nombre) {
+      ubicacion = m.bodega_destino_nombre;
+      icono = '🏬';
+    } else {
+      ubicacion = 'Disponible (sin bodega)';
+      icono = '📦';
+    }
+    const next = asc[i + 1];
+    return { id: m.id, ubicacion, icono, desde: m.fecha, hasta: next ? next.fecha : null };
+  }).reverse();
+}
+
+function formatDuracion(desdeStr: string, hastaStr: string | null): string {
+  const desde = new Date(desdeStr).getTime();
+  const hasta = hastaStr ? new Date(hastaStr).getTime() : Date.now();
+  const dias = Math.max(0, Math.round((hasta - desde) / 86400000));
+  if (dias === 0) return 'Menos de 1 día';
+  if (dias < 30) return `${dias} día${dias !== 1 ? 's' : ''}`;
+  const meses = Math.floor(dias / 30);
+  if (meses < 12) return `${meses} mes${meses !== 1 ? 'es' : ''}`;
+  const anios = Math.floor(meses / 12);
+  const mesesRestantes = meses % 12;
+  return `${anios} año${anios !== 1 ? 's' : ''}${mesesRestantes > 0 ? ` ${mesesRestantes}m` : ''}`;
+}
+
 function AsignacionesTab({ equipmentId }: { equipmentId: number }) {
   const [items, setItems] = useState<AsignacionRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1510,8 +1554,42 @@ function AsignacionesTab({ equipmentId }: { equipmentId: number }) {
     );
   }
 
+  const estadias = buildTrazabilidad(items);
+
   return (
-    <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+    <div className="space-y-6">
+      {/* Trazabilidad: dónde ha estado y cuánto tiempo */}
+      <div className="rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+        <div className="border-b border-slate-100 px-5 py-4 dark:border-slate-800">
+          <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200">Trazabilidad — dónde ha estado y cuánto tiempo</h3>
+        </div>
+        <div className="p-5">
+          <div className="relative pl-6">
+            <div className="absolute bottom-1 left-[9px] top-1 w-px bg-slate-200 dark:bg-slate-800" />
+            {estadias.map((e) => (
+              <div key={e.id} className="relative pb-5 last:pb-0">
+                <span className="absolute -left-6 top-0.5 flex h-[18px] w-[18px] items-center justify-center rounded-full border-2 border-white bg-slate-100 text-[10px] dark:border-slate-900 dark:bg-slate-800">
+                  {e.icono}
+                </span>
+                <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+                  <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">{e.ubicacion}</p>
+                  <span className={`text-xs font-medium ${e.hasta === null ? 'text-cyan-600 dark:text-cyan-400' : 'text-slate-500 dark:text-slate-400'}`}>
+                    {e.hasta === null ? `Actual · ${formatDuracion(e.desde, e.hasta)}` : formatDuracion(e.desde, e.hasta)}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  {new Date(e.desde).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}
+                  {' – '}
+                  {e.hasta ? new Date(e.hasta).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' }) : 'actualidad'}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Detalle de movimientos */}
+      <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
       <table className="min-w-full text-left text-sm">
         <thead className="bg-slate-100 text-xs uppercase tracking-wider text-slate-600 dark:bg-slate-950 dark:text-slate-400">
           <tr>
@@ -1544,6 +1622,8 @@ function AsignacionesTab({ equipmentId }: { equipmentId: number }) {
                   )
                 ) : m.empleado_nombre ? (
                   <><p className="text-slate-800 dark:text-slate-200">{m.empleado_nombre}</p>{m.empleado_cedula && <p className="text-xs text-slate-500">{m.empleado_cedula}</p>}</>
+                ) : (m.sede_destino ?? m.equipment_sede) ? (
+                  <><p className="text-xs text-slate-400 dark:text-slate-500">→ Sede</p><p className="text-slate-700 dark:text-slate-300">{m.sede_destino ?? m.equipment_sede}</p></>
                 ) : (
                   <span className="text-slate-400 dark:text-slate-600">—</span>
                 )}
@@ -1557,6 +1637,7 @@ function AsignacionesTab({ equipmentId }: { equipmentId: number }) {
           ))}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }

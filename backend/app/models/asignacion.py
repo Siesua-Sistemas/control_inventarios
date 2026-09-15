@@ -20,6 +20,7 @@ class Asignacion(Base):
     empleado_id = Column(Integer, ForeignKey('empleados.id'), nullable=True)
     bodega_origen_id = Column(Integer, ForeignKey('bodegas.id'), nullable=True)
     bodega_destino_id = Column(Integer, ForeignKey('bodegas.id'), nullable=True)
+    sede_destino = Column(String(120), nullable=True)
 
     estado_antes = Column(String(50), nullable=True)
     estado_despues = Column(String(50), nullable=False)

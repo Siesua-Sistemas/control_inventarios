@@ -113,6 +113,7 @@ def export_historial(
             a.equipment_marca,
             a.equipment_modelo,
             a.equipment_sede,
+            a.sede_destino or '',
             a.empleado_nombre or '',
             a.empleado_cedula or '',
             a.bodega_origen_nombre or '',
@@ -127,7 +128,7 @@ def export_historial(
     return csv_response(
         'historial_movimientos.csv',
         ['Fecha', 'Tipo', 'Código equipo', 'Serial', 'Tipo equipo', 'Marca', 'Modelo', 'Sede',
-         'Empleado', 'Cédula', 'Bodega origen', 'Bodega destino', 'Estado anterior', 'Estado nuevo',
+         'Sede destino', 'Empleado', 'Cédula', 'Bodega origen', 'Bodega destino', 'Estado anterior', 'Estado nuevo',
          'Observaciones', 'Registrado por'],
         rows,
     )
