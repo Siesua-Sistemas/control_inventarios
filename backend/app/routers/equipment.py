@@ -18,7 +18,7 @@ from app.schemas.equipment import (
     EquipmentBrief, EquipmentCreate, EquipmentDocumentoOut, EquipmentListResponse,
     EquipmentOut, EquipmentPhotoOut, EquipmentProfile, EquipmentUpdate,
     EquipmentProximoPreventivoOut, EquipmentProximoPreventivoListResponse,
-    CalibracionItem, CalibracionListResponse,
+    CalibracionItem, CalibracionListResponse, ESTADOS_INACTIVOS,
 )
 from app.schemas.equipment_tipo import (
     EquipmentTipoCreate, EquipmentTipoListResponse, EquipmentTipoOut,
@@ -116,6 +116,7 @@ def list_proximos_preventivos(
     filters = [
         Equipment.is_active.is_(True),
         Equipment.proximo_preventivo.isnot(None),
+        Equipment.estado.notin_(ESTADOS_INACTIVOS),
     ]
     if dominios_permitidos is not None:
         filters.append(Equipment.dominio.in_(dominios_permitidos))
@@ -161,6 +162,7 @@ def list_calibraciones(
     filters = [
         Equipment.is_active.is_(True),
         Equipment.vencimiento_calibracion.isnot(None),
+        Equipment.estado.notin_(ESTADOS_INACTIVOS),
     ]
     if dominios_permitidos is not None:
         filters.append(Equipment.dominio.in_(dominios_permitidos))

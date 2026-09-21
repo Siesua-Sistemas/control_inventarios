@@ -12,6 +12,7 @@ from app.models.audit_log import AuditLog
 from app.models.bodega import Bodega
 from app.models.empleado import Empleado
 from app.models.equipment import Equipment
+from app.schemas.equipment import ESTADOS_INACTIVOS
 from app.models.red_wifi import RedWifi
 from app.models.ticket import Ticket, TicketComentario, ticket_equipos
 from app.models.ticket_imagen import TicketImagen
@@ -159,6 +160,7 @@ def verificar(body: VerificarRequest, request: Request, db: Session = Depends(ge
         select(Equipment).where(
             Equipment.empleado_id == empleado.id,
             Equipment.is_active.is_(True),
+            Equipment.estado.notin_(ESTADOS_INACTIVOS),
         )
     ).scalars().all()
 
@@ -182,6 +184,7 @@ def verificar(body: VerificarRequest, request: Request, db: Session = Depends(ge
             select(Equipment).where(
                 or_(*condiciones_sede),
                 Equipment.is_active.is_(True),
+                Equipment.estado.notin_(ESTADOS_INACTIVOS),
             )
         ).scalars().all()
 

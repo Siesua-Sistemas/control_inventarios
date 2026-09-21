@@ -2,6 +2,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models.equipment import Equipment
+from app.schemas.equipment import ESTADOS_INACTIVOS
 
 
 class EquipmentRepository:
@@ -45,6 +46,10 @@ class EquipmentRepository:
             query = query.where(Equipment.sede.ilike(f'%{sede}%'))
         if estado:
             query = query.where(Equipment.estado == estado)
+        else:
+            # Por defecto se ocultan los equipos fuera de operación (dados de baja o
+            # devueltos a un tercero) — siguen consultables filtrando por ese estado.
+            query = query.where(Equipment.estado.notin_(ESTADOS_INACTIVOS))
         if criticidad:
             query = query.where(Equipment.criticidad == criticidad)
 

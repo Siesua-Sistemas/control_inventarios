@@ -8,6 +8,9 @@ ESTADOS_VALIDOS = {
     'Disponible', 'Asignado', 'En mantenimiento',
     'Dañado', 'Prestado', 'En bodega', 'Perdido', 'Dado de baja', 'Devuelto a tercero',
 }
+# Equipos fuera de operación: se conservan para consulta/trazabilidad pero se
+# excluyen por defecto de inventario, mantenimiento y tickets.
+ESTADOS_INACTIVOS = {'Dado de baja', 'Devuelto a tercero'}
 CRITICIDADES_VALIDAS = {'Alta', 'Media', 'Baja'}
 DOMINIOS_VALIDOS = {'IT', 'Bioingeniería', 'General'}
 

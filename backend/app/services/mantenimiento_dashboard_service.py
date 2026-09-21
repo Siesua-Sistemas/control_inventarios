@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.models.equipment import Equipment
 from app.models.mantenimiento import Mantenimiento
+from app.schemas.equipment import ESTADOS_INACTIVOS
 from app.schemas.mantenimiento import AlertaItem, MantenimientosDashboard, PorSedeEstado
 
 GARANTIA_DIAS_ALERTA = 60
@@ -19,7 +20,7 @@ class MantenimientoDashboardService:
     def get_dashboard(self, dominios_permitidos: list[str] | None = None) -> MantenimientosDashboard:
         today = date.today()
 
-        eq_base = [Equipment.is_active.is_(True)]
+        eq_base = [Equipment.is_active.is_(True), Equipment.estado.notin_(ESTADOS_INACTIVOS)]
         if dominios_permitidos is not None:
             eq_base.append(Equipment.dominio.in_(dominios_permitidos))
 
@@ -33,6 +34,7 @@ class MantenimientoDashboardService:
             .where(
                 Mantenimiento.is_active.is_(True),
                 Mantenimiento.proximo_mantenimiento.isnot(None),
+                Equipment.estado.notin_(ESTADOS_INACTIVOS),
                 *([Equipment.dominio.in_(dominios_permitidos)] if dominios_permitidos is not None else []),
             )
             .group_by(Mantenimiento.equipment_id)
@@ -108,7 +110,7 @@ class MantenimientoDashboardService:
             select(Equipment.sede, Equipment.estado, func.count())
             .where(
                 *eq_base,
-                Equipment.estado.notin_(['Dado de baja', 'Perdido']),
+                Equipment.estado.notin_(ESTADOS_INACTIVOS | {'Perdido'}),
             )
             .group_by(Equipment.sede, Equipment.estado)
         ).all()

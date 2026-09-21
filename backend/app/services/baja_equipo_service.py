@@ -6,8 +6,9 @@ from app.models.baja_equipo import MOTIVOS_BAJA, BajaEquipo
 from app.repositories.baja_equipo_repository import BajaEquipoRepository
 from app.repositories.equipment_repository import EquipmentRepository
 from app.schemas.baja_equipo import BajaAprobarRequest, BajaEquipoCreate, BajaEquipoOut, BajaFotoOut
+from app.schemas.equipment import ESTADOS_INACTIVOS
 
-ESTADOS_NO_DABLES_DE_BAJA = {'Dado de baja'}
+ESTADOS_NO_DABLES_DE_BAJA = ESTADOS_INACTIVOS
 
 
 def _to_out(b: BajaEquipo) -> BajaEquipoOut:
