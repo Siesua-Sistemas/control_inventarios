@@ -195,6 +195,21 @@ def list_mantenimientos(
     return {'total': total, 'items': items}
 
 
+@router.get('/{mantenimiento_id}', response_model=MantenimientoOut)
+def get_mantenimiento(
+    mantenimiento_id: int,
+    db: Session = Depends(get_db),
+    _user=Depends(require_permissions('mantenimientos:read')),
+):
+    from app.services.mantenimiento_service import _to_out
+    m = db.scalar(
+        select(Mantenimiento).where(Mantenimiento.id == mantenimiento_id, Mantenimiento.is_active.is_(True))
+    )
+    if not m:
+        raise HTTPException(status_code=404, detail='Mantenimiento no encontrado')
+    return _to_out(m)
+
+
 @router.post('', response_model=MantenimientoOut, status_code=201)
 def create_mantenimiento(
     payload: MantenimientoCreate,

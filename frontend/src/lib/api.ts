@@ -859,6 +859,10 @@ export async function listMantenimientos(filters: MantenimientoFilters | number 
   return apiRequest(`/api/v1/mantenimientos${p.toString() ? '?' + p.toString() : ''}`);
 }
 
+export async function getMantenimiento(id: number): Promise<MantenimientoRow> {
+  return apiRequest(`/api/v1/mantenimientos/${id}`);
+}
+
 export async function createMantenimiento(data: MantenimientoPayload): Promise<MantenimientoRow> {
   return apiRequest('/api/v1/mantenimientos', {
     method: 'POST',

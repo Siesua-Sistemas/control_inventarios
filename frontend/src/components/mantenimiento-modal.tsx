@@ -275,6 +275,13 @@ export function MantenimientoModal({ mantenimiento: initial, onClose, onUpdate }
             >
               Ver hoja de vida →
             </Link>
+            <Link
+              href={`/mantenimientos/${m.id}/imprimir`}
+              target="_blank"
+              className="rounded-md border border-slate-300 px-2 py-0.5 text-xs font-medium text-slate-600 hover:border-cyan-500 hover:text-cyan-700 dark:border-slate-700 dark:text-slate-300 dark:hover:border-cyan-600 dark:hover:text-cyan-400"
+            >
+              🖨 Imprimir OT
+            </Link>
           </div>
         </div>
 
