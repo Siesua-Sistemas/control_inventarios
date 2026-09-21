@@ -21,11 +21,13 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Inventario', links: [
     { href: '/equipos', label: 'Equipos', permission: 'equipment:read' },
     { href: '/bodegas', label: 'Bodegas', permission: 'bodegas:read' },
+    { href: '/equipos/bajas', label: 'Bajas de equipos', permission: 'equipos:baja_solicitar' },
   ]},
   { label: 'Movimientos', links: [
     { href: '/asignaciones', label: 'Asignaciones', permission: 'asignaciones:read' },
     { href: '/historial', label: 'Historial', permission: 'asignaciones:read' },
     { href: '/actas', label: 'Actas de entrega', permission: null },
+    { href: '/actas/salida', label: 'Actas de salida', permission: 'actas:salida' },
   ]},
   { label: 'Mantenimiento', links: [
     { href: '/mantenimientos', label: 'Panel', permission: 'mantenimientos:read' },

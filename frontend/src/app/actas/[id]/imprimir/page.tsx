@@ -44,6 +44,12 @@ export default function ImprimirActaPage() {
   const TIPO_LABEL: Record<string, string> = {
     bodega: 'Acta de Entrega de Sede',
     asignacion: 'Acta de Entrega de Equipos',
+    salida: 'Acta de Salida de Equipos',
+  };
+
+  const TIPO_SALIDA_LABEL: Record<string, string> = {
+    consignacion: 'Consignación',
+    arrendamiento: 'Arrendamiento',
   };
 
   return (
@@ -72,11 +78,36 @@ export default function ImprimirActaPage() {
             <p className="mt-1 text-sm capitalize text-slate-600">{fecha}</p>
           </div>
           <div className="text-right">
-            <p className="text-xs text-slate-500">Sede</p>
+            <p className="text-xs text-slate-500">{acta.tipo === 'salida' ? 'Sede de origen' : 'Sede'}</p>
             <p className="font-semibold">{acta.sede}</p>
             <p className="mt-0.5 text-base font-bold">{acta.titulo}</p>
           </div>
         </div>
+
+        {/* Datos de la salida (consignación / arrendamiento) */}
+        {acta.tipo === 'salida' && (
+          <section className="mb-6">
+            <h2 className="mb-3 text-xs font-bold uppercase tracking-widest text-slate-500">Datos de la salida</h2>
+            <div className="grid grid-cols-3 gap-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
+              <div>
+                <p className="text-xs text-slate-500">Tipo de salida</p>
+                <p className="mt-0.5 font-semibold">{acta.tipo_salida ? TIPO_SALIDA_LABEL[acta.tipo_salida] ?? acta.tipo_salida : '—'}</p>
+              </div>
+              <div>
+                <p className="text-xs text-slate-500">Empresa / cliente</p>
+                <p className="mt-0.5 font-semibold">{acta.cliente_empresa ?? '—'}</p>
+              </div>
+              <div>
+                <p className="text-xs text-slate-500">Plazo de devolución</p>
+                <p className="mt-0.5 font-semibold">
+                  {acta.plazo_devolucion
+                    ? new Date(`${acta.plazo_devolucion}T00:00:00`).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })
+                    : 'No aplica'}
+                </p>
+              </div>
+            </div>
+          </section>
+        )}
 
         {/* Responsables */}
         <section className="mb-6">

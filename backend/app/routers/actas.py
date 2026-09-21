@@ -47,6 +47,9 @@ def _to_row(acta) -> ActaEntregaRow:
         bodega_id=acta.bodega_id,
         empleado_id=acta.empleado_id,
         observaciones=acta.observaciones,
+        tipo_salida=acta.tipo_salida,
+        cliente_empresa=acta.cliente_empresa,
+        plazo_devolucion=acta.plazo_devolucion,
         fecha=acta.fecha,
         created_by_nombre=acta.created_by.full_name if acta.created_by else None,
         total_equipos=len(acta.equipos_snapshot or []),
@@ -58,8 +61,13 @@ def create_acta(
     payload: ActaEntregaCreate,
     repo: ActaEntregaRepository = Depends(_repo),
     db: Session = Depends(get_db),
-    user=Depends(require_any_permission('asignaciones:write', 'asignaciones:entregar', 'bodegas:write')),
+    user=Depends(require_any_permission('asignaciones:write', 'asignaciones:entregar', 'bodegas:write', 'actas:salida')),
 ):
+    if payload.tipo == 'salida' and not (payload.cliente_empresa or '').strip():
+        raise HTTPException(status_code=400, detail='Debes indicar la empresa o cliente que recibe el equipo')
+    if payload.tipo == 'salida' and payload.tipo_salida not in ('consignacion', 'arrendamiento'):
+        raise HTTPException(status_code=400, detail='Indica si la salida es por consignación o arrendamiento')
+
     data = payload.model_dump()
     data['created_by_id'] = user.id
     data['dominio'] = _infer_dominio(payload, db)

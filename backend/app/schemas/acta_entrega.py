@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from pydantic import BaseModel
@@ -15,7 +15,7 @@ class EquipoSnapshot(BaseModel):
 
 
 class ActaEntregaCreate(BaseModel):
-    tipo: str                          # 'bodega' | 'asignacion'
+    tipo: str                          # 'bodega' | 'asignacion' | 'salida'
     sede: str
     titulo: str
     entrega_nombre: str
@@ -26,6 +26,9 @@ class ActaEntregaCreate(BaseModel):
     bodega_id: int | None = None
     empleado_id: int | None = None
     observaciones: str | None = None
+    tipo_salida: str | None = None      # 'consignacion' | 'arrendamiento' — solo tipo='salida'
+    cliente_empresa: str | None = None
+    plazo_devolucion: date | None = None
 
 
 class ActaEntregaRow(BaseModel):
@@ -41,6 +44,9 @@ class ActaEntregaRow(BaseModel):
     bodega_id: int | None
     empleado_id: int | None
     observaciones: str | None
+    tipo_salida: str | None = None
+    cliente_empresa: str | None = None
+    plazo_devolucion: date | None = None
     fecha: datetime
     created_by_nombre: str | None
     total_equipos: int

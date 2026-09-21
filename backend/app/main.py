@@ -11,6 +11,7 @@ from app.database import Base, engine
 from app.models.audit_log import AuditLog  # noqa: F401
 from app.models.acta_entrega import ActaEntrega  # noqa: F401
 from app.models.asignacion import Asignacion  # noqa: F401
+from app.models.baja_equipo import BajaEquipo, BajaEquipoFoto  # noqa: F401
 from app.models.bodega import Bodega  # noqa: F401
 from app.models.credencial import Credencial  # noqa: F401
 from app.models.empleado import Empleado  # noqa: F401
@@ -35,6 +36,7 @@ from app.models.user import Permission, Role, User
 from app.routers.actas import router as actas_router
 from app.routers.asignaciones import router as asignaciones_router
 from app.routers.auth import router as auth_router
+from app.routers.bajas import router as bajas_router
 from app.routers.bodegas import router as bodegas_router
 from app.routers.credenciales import router as credenciales_router
 from app.routers.jornada import router as jornada_router
@@ -309,6 +311,44 @@ def _run_migrations() -> None:
 
         # Trazabilidad de asignaciones — sede destino histórica (entregas a sede o a persona)
         conn.execute(text('ALTER TABLE asignaciones ADD COLUMN IF NOT EXISTS sede_destino VARCHAR(120)'))
+
+        # Actas de salida (consignación / arrendamiento a terceros)
+        conn.execute(text('ALTER TABLE actas_entrega ADD COLUMN IF NOT EXISTS tipo_salida VARCHAR(20)'))
+        conn.execute(text('ALTER TABLE actas_entrega ADD COLUMN IF NOT EXISTS cliente_empresa VARCHAR(200)'))
+        conn.execute(text('ALTER TABLE actas_entrega ADD COLUMN IF NOT EXISTS plazo_devolucion DATE'))
+
+        # Bajas de equipo — solicitud + aprobación en dos pasos, con evidencia fotográfica
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS bajas_equipo (
+                id SERIAL PRIMARY KEY,
+                equipment_id INTEGER NOT NULL REFERENCES equipment(id),
+                motivo VARCHAR(30) NOT NULL,
+                motivo_detalle VARCHAR(500),
+                observaciones VARCHAR(1000),
+                estado VARCHAR(20) NOT NULL DEFAULT 'pendiente_aprobacion',
+                solicitado_por_id INTEGER NOT NULL REFERENCES users(id),
+                solicitado_en TIMESTAMP NOT NULL DEFAULT NOW(),
+                firma_autoriza TEXT,
+                autorizado_por_id INTEGER REFERENCES users(id),
+                autorizado_en TIMESTAMP,
+                comentario_aprobacion VARCHAR(500),
+                equipment_estado_antes VARCHAR(50)
+            )
+        """))
+        conn.execute(text(
+            'CREATE INDEX IF NOT EXISTS ix_bajas_equipo_equipment_id ON bajas_equipo(equipment_id)'
+        ))
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS baja_equipo_fotos (
+                id SERIAL PRIMARY KEY,
+                baja_id INTEGER NOT NULL REFERENCES bajas_equipo(id) ON DELETE CASCADE,
+                filename VARCHAR(255) NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT NOW()
+            )
+        """))
+        conn.execute(text(
+            'CREATE INDEX IF NOT EXISTS ix_baja_equipo_fotos_baja_id ON baja_equipo_fotos(baja_id)'
+        ))
         conn.commit()
 
 
@@ -324,6 +364,7 @@ app.add_middleware(
 os.makedirs('storage/equipment_photos', exist_ok=True)
 os.makedirs('storage/equipment_docs', exist_ok=True)
 os.makedirs('storage/mantenimiento_photos', exist_ok=True)
+os.makedirs('storage/baja_equipo_fotos', exist_ok=True)
 os.makedirs('storage/ticket_fotos', exist_ok=True)
 os.makedirs('storage/jornadas', exist_ok=True)
 app.mount('/storage', StaticFiles(directory='storage'), name='storage')
@@ -337,6 +378,7 @@ app.include_router(bodegas_router)
 app.include_router(empleados_router)
 app.include_router(asignaciones_router)
 app.include_router(actas_router)
+app.include_router(bajas_router)
 app.include_router(dashboard_router)
 app.include_router(mantenimientos_router)
 app.include_router(credenciales_router)
@@ -373,6 +415,9 @@ def seed_data():
             ('asignaciones:write', 'Gestionar asignaciones', 'Permite entregar, recibir y gestionar todos los movimientos de equipos'),
             ('asignaciones:trasladar', 'Trasladar equipos', 'Permite trasladar equipos entre bodegas'),
             ('asignaciones:devolver_sin_acta', 'Devolver sin acta', 'Permite devolver equipos sin generar acta firmada'),
+            ('actas:salida', 'Registrar actas de salida', 'Permite registrar salidas de equipos en consignación o arrendamiento a terceros'),
+            ('equipos:baja_solicitar', 'Solicitar baja de equipo', 'Permite solicitar dar de baja un equipo (dañado, obsoleto, perdido, etc.)'),
+            ('equipos:baja_aprobar', 'Aprobar baja de equipo', 'Permite aprobar o rechazar solicitudes de baja de equipos (supervisor)'),
             ('mantenimientos:read', 'Ver mantenimientos', 'Permite ver registros de mantenimiento'),
             ('mantenimientos:create', 'Crear mantenimientos', 'Permite registrar nuevos mantenimientos'),
             ('mantenimientos:update', 'Actualizar mantenimientos', 'Permite marcar como realizado y reprogramar la próxima fecha'),

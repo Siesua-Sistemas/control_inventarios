@@ -4,21 +4,31 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
+import { useAuth } from '@/components/auth-provider';
 import { NavBar } from '@/components/nav-bar';
 import { isAuthenticated, listActas, type ActaEntregaRow } from '@/lib/api';
 
 const TIPO_STYLES: Record<string, string> = {
   bodega: 'bg-indigo-100 text-indigo-700 border-indigo-300 dark:bg-indigo-500/20 dark:text-indigo-300 dark:border-indigo-500/30',
   asignacion: 'bg-cyan-100 text-cyan-700 border-cyan-300 dark:bg-cyan-500/20 dark:text-cyan-300 dark:border-cyan-500/30',
+  salida: 'bg-violet-100 text-violet-700 border-violet-300 dark:bg-violet-500/20 dark:text-violet-300 dark:border-violet-500/30',
 };
 
 const TIPO_LABEL: Record<string, string> = {
   bodega: 'Bodega',
   asignacion: 'Sede',
+  salida: 'Salida',
+};
+
+const TIPO_SALIDA_LABEL: Record<string, string> = {
+  consignacion: 'Consignación',
+  arrendamiento: 'Arrendamiento',
 };
 
 export default function ActasHistorialPage() {
   const router = useRouter();
+  const { loading: authLoading, hasPermission } = useAuth();
+  const canSalida = authLoading || hasPermission('actas:salida') || hasPermission('asignaciones:write') || hasPermission('bodegas:write');
   const [actas, setActas] = useState<ActaEntregaRow[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -62,7 +72,14 @@ export default function ActasHistorialPage() {
             <h1 className="text-3xl font-bold">Historial de Actas</h1>
             <p className="mt-1 text-slate-600 dark:text-slate-400">Registro de todas las entregas formalizadas</p>
           </div>
-          <span className="rounded-2xl bg-indigo-100 px-5 py-2 text-2xl font-bold text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-400">{total}</span>
+          <div className="flex items-center gap-3">
+            {canSalida && (
+              <Link href="/actas/salida" className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-500 transition-colors">
+                + Registrar salida
+              </Link>
+            )}
+            <span className="rounded-2xl bg-indigo-100 px-5 py-2 text-2xl font-bold text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-400">{total}</span>
+          </div>
         </div>
 
         {/* Filtros */}
@@ -77,6 +94,7 @@ export default function ActasHistorialPage() {
               <option value="">Todos</option>
               <option value="bodega">Sedes</option>
               <option value="asignacion">Asignación</option>
+              <option value="salida">Salida (consignación/arriendo)</option>
             </select>
           </div>
           <div className="flex flex-col gap-1">
@@ -163,7 +181,10 @@ export default function ActasHistorialPage() {
                     </td>
                     <td className="px-4 py-3">
                       <p className="font-medium text-slate-900 dark:text-white">{acta.titulo}</p>
-                      <p className="text-xs text-slate-500">{acta.sede}</p>
+                      <p className="text-xs text-slate-500">
+                        {acta.tipo === 'salida' && acta.tipo_salida ? TIPO_SALIDA_LABEL[acta.tipo_salida] ?? acta.tipo_salida : acta.sede}
+                        {acta.tipo === 'salida' && acta.plazo_devolucion && ` · devuelve ${new Date(`${acta.plazo_devolucion}T00:00:00`).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}`}
+                      </p>
                     </td>
                     <td className="px-4 py-3 text-slate-700 dark:text-slate-300">{acta.entrega_nombre}</td>
                     <td className="px-4 py-3 text-slate-700 dark:text-slate-300">{acta.recibe_nombre}</td>

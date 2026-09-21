@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, JSON, String, Text
+from sqlalchemy import Column, Date, DateTime, ForeignKey, Integer, JSON, String, Text
 from sqlalchemy.orm import relationship
 
 from app.database import Base
@@ -10,13 +10,18 @@ class ActaEntrega(Base):
     __tablename__ = 'actas_entrega'
 
     id = Column(Integer, primary_key=True, index=True)
-    tipo = Column(String(20), nullable=False)          # 'bodega' | 'asignacion'
+    tipo = Column(String(20), nullable=False)          # 'bodega' | 'asignacion' | 'salida'
     dominio = Column(String(30), nullable=False, default='IT', server_default='IT')
     sede = Column(String(120), nullable=False)
-    titulo = Column(String(200), nullable=False)       # nombre bodega o empleado
+    titulo = Column(String(200), nullable=False)       # nombre bodega, empleado o tercero
 
     entrega_nombre = Column(String(160), nullable=False)
     recibe_nombre = Column(String(160), nullable=False)
+
+    # Solo para tipo='salida' (consignación / arrendamiento a un tercero)
+    tipo_salida = Column(String(20), nullable=True)     # 'consignacion' | 'arrendamiento'
+    cliente_empresa = Column(String(200), nullable=True)
+    plazo_devolucion = Column(Date, nullable=True)      # informativo, sin seguimiento automático
 
     firma_entrega = Column(Text, nullable=True)        # base64 PNG
     firma_recibe = Column(Text, nullable=True)         # base64 PNG

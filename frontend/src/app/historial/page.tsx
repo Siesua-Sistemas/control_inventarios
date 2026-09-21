@@ -20,8 +20,9 @@ import { compareValues, SortableTh } from '@/lib/sort-utils';
 const ACTA_TIPO_STYLE: Record<string, string> = {
   bodega: 'bg-indigo-100 text-indigo-700 border-indigo-300 dark:bg-indigo-500/20 dark:text-indigo-300 dark:border-indigo-500/30',
   asignacion: 'bg-cyan-100 text-cyan-700 border-cyan-300 dark:bg-cyan-500/20 dark:text-cyan-300 dark:border-cyan-500/30',
+  salida: 'bg-violet-100 text-violet-700 border-violet-300 dark:bg-violet-500/20 dark:text-violet-300 dark:border-violet-500/30',
 };
-const ACTA_TIPO_LABEL: Record<string, string> = { bodega: 'Bodega', asignacion: 'Asignación' };
+const ACTA_TIPO_LABEL: Record<string, string> = { bodega: 'Bodega', asignacion: 'Asignación', salida: 'Salida' };
 
 type ActaSortField = 'fecha' | 'tipo' | 'sede' | 'entrega' | 'recibe' | 'dispositivos' | 'firmas';
 
@@ -99,6 +100,7 @@ function ActasTab() {
             <option value="">Todos</option>
             <option value="bodega">Sedes</option>
             <option value="asignacion">Asignación</option>
+            <option value="salida">Salida</option>
           </select>
         </div>
         <div className="flex flex-col gap-1">

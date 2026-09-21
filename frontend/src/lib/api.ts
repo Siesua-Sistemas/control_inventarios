@@ -619,6 +619,9 @@ export interface ActaEntregaRow {
   bodega_id: number | null;
   empleado_id: number | null;
   observaciones: string | null;
+  tipo_salida: string | null;
+  cliente_empresa: string | null;
+  plazo_devolucion: string | null;
   fecha: string;
   created_by_nombre: string | null;
   total_equipos: number;
@@ -636,6 +639,9 @@ interface ActaEntregaCreate {
   bodega_id?: number;
   empleado_id?: number;
   observaciones?: string;
+  tipo_salida?: string;
+  cliente_empresa?: string;
+  plazo_devolucion?: string;
 }
 
 export async function createActaEntrega(data: ActaEntregaCreate): Promise<ActaEntregaRow> {
@@ -2146,4 +2152,103 @@ export interface SiesuaSyncResult {
 
 export async function sincronizarSiesua(): Promise<SiesuaSyncResult> {
   return apiRequest<SiesuaSyncResult>('/api/v1/integraciones/siesua/sync', { method: 'POST' });
+}
+
+// ── Bajas de equipo ────────────────────────────────────────────────────────────
+
+export const MOTIVOS_BAJA: { value: string; label: string }[] = [
+  { value: 'danado_irreparable', label: 'Dañado irreparable' },
+  { value: 'obsoleto', label: 'Obsoleto' },
+  { value: 'robado_perdido', label: 'Robado o perdido' },
+  { value: 'fin_vida_util', label: 'Fin de vida útil' },
+  { value: 'otro', label: 'Otro' },
+];
+
+export interface BajaFotoOut {
+  id: number;
+  baja_id: number;
+  filename: string;
+  url: string;
+  created_at: string;
+}
+
+export interface BajaEquipoRow {
+  id: number;
+  equipment_id: number;
+  equipment_codigo: string;
+  equipment_serial: string;
+  equipment_tipo: string;
+  equipment_marca: string;
+  equipment_modelo: string;
+  equipment_sede: string;
+  motivo: string;
+  motivo_detalle: string | null;
+  observaciones: string | null;
+  estado: string;
+  solicitado_por_nombre: string;
+  solicitado_en: string;
+  firma_autoriza: string | null;
+  autorizado_por_nombre: string | null;
+  autorizado_en: string | null;
+  comentario_aprobacion: string | null;
+  fotos: BajaFotoOut[];
+}
+
+export async function createBaja(data: {
+  equipment_id: number;
+  motivo: string;
+  motivo_detalle?: string;
+  observaciones?: string;
+}): Promise<BajaEquipoRow> {
+  return apiRequest('/api/v1/bajas', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function listBajas(filters: {
+  estado?: string;
+  equipment_id?: number;
+  skip?: number;
+  limit?: number;
+} = {}): Promise<{ total: number; items: BajaEquipoRow[] }> {
+  const p = new URLSearchParams();
+  if (filters.estado) p.set('estado', filters.estado);
+  if (filters.equipment_id) p.set('equipment_id', String(filters.equipment_id));
+  if (filters.skip) p.set('skip', String(filters.skip));
+  if (filters.limit) p.set('limit', String(filters.limit));
+  return apiRequest(`/api/v1/bajas${p.toString() ? '?' + p.toString() : ''}`);
+}
+
+export async function getBaja(id: number): Promise<BajaEquipoRow> {
+  return apiRequest(`/api/v1/bajas/${id}`);
+}
+
+export async function aprobarBaja(id: number, data: { aprobado: boolean; firma_autoriza: string; comentario?: string }): Promise<BajaEquipoRow> {
+  return apiRequest(`/api/v1/bajas/${id}/aprobar`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function uploadBajaFoto(bajaId: number, file: File): Promise<BajaFotoOut> {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null;
+  const formData = new FormData();
+  formData.append('file', file);
+  const response = await fetch(`${API_BASE}/api/v1/bajas/${bajaId}/fotos`, {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: formData,
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error((err as ApiError).detail || 'Error al subir foto');
+  }
+  return response.json();
+}
+
+export async function deleteBajaFoto(bajaId: number, fotoId: number): Promise<void> {
+  await apiRequest<void>(`/api/v1/bajas/${bajaId}/fotos/${fotoId}`, { method: 'DELETE' });
 }

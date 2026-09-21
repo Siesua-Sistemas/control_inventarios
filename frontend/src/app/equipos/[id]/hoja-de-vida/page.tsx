@@ -140,6 +140,8 @@ function ResumenTab({
   onGoTab: (tab: Tab) => void;
 }) {
   const eq = profile.equipment;
+  const { loading: authLoading, hasPermission } = useAuth();
+  const canBaja = authLoading || hasPermission('equipos:baja_solicitar');
   const [proximoMant, setProximoMant] = useState<string | null | undefined>(undefined);
   const [recientes, setRecientes] = useState<AsignacionRow[]>([]);
   const [loadingFeed, setLoadingFeed] = useState(true);
@@ -251,6 +253,30 @@ function ResumenTab({
           )}
         </div>
       </div>
+
+      {eq.estado === 'Dado de baja' ? (
+        <div className="rounded-2xl border border-stone-300 bg-stone-100 px-5 py-4 dark:border-stone-700 dark:bg-stone-900/40">
+          <p className="text-sm font-semibold text-stone-700 dark:text-stone-300">📦 Este equipo está dado de baja</p>
+          <p className="mt-0.5 text-xs text-stone-600 dark:text-stone-400">
+            Ya no está disponible para asignación, traslado o mantenimiento. Consulta la <Link href="/equipos/bajas" className="underline">solicitud de baja</Link> para ver el motivo y quién la autorizó.
+          </p>
+        </div>
+      ) : canBaja && (
+        <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4 dark:border-red-900/40 dark:bg-slate-900">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-red-700 dark:text-red-400">Dar de baja este equipo</p>
+              <p className="text-xs text-slate-600 dark:text-slate-400">Para equipos dañados irreparablemente, obsoletos, robados/perdidos o al fin de su vida útil. Requiere aprobación de un supervisor.</p>
+            </div>
+            <Link
+              href={`/equipos/${equipmentId}/dar-de-baja`}
+              className="shrink-0 rounded-md border border-red-300 bg-white px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-100 dark:border-red-800 dark:bg-slate-800 dark:text-red-400 dark:hover:bg-red-900/30"
+            >
+              Solicitar baja →
+            </Link>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
