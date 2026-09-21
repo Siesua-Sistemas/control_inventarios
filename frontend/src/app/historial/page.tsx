@@ -41,6 +41,10 @@ function actaSortValue(acta: ActaEntregaRow, field: ActaSortField): string | num
 function ActasTab() {
   const { loading: authLoading, hasPermission } = useAuth();
   const canExport = authLoading || hasPermission('reports:export');
+  const canEntregar = authLoading || hasPermission('asignaciones:write') || hasPermission('asignaciones:entregar');
+  const canSalida = authLoading
+    || hasPermission('actas:salida') || hasPermission('asignaciones:write') || hasPermission('bodegas:write')
+    || hasPermission('equipos:baja_solicitar');
   const [actas, setActas] = useState<ActaEntregaRow[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -91,6 +95,21 @@ function ActasTab() {
 
   return (
     <div>
+      {(canEntregar || canSalida) && (
+        <div className="mb-4 flex items-center gap-3">
+          {canEntregar && (
+            <Link href="/actas/entrega" className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 transition-colors">
+              + Acta de entrega
+            </Link>
+          )}
+          {canSalida && (
+            <Link href="/actas/salida" className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-500 transition-colors">
+              + Salida de equipo
+            </Link>
+          )}
+        </div>
+      )}
+
       {/* Filtros */}
       <form onSubmit={handleFilter} className="mb-5 flex flex-wrap items-end gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-900/60">
         <div className="flex flex-col gap-1">

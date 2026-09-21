@@ -31,6 +31,7 @@ export default function ActasHistorialPage() {
   const canSalida = authLoading
     || hasPermission('actas:salida') || hasPermission('asignaciones:write') || hasPermission('bodegas:write')
     || hasPermission('equipos:baja_solicitar');
+  const canEntregar = authLoading || hasPermission('asignaciones:write') || hasPermission('asignaciones:entregar');
   const [actas, setActas] = useState<ActaEntregaRow[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -75,6 +76,11 @@ export default function ActasHistorialPage() {
             <p className="mt-1 text-slate-600 dark:text-slate-400">Registro de todas las entregas formalizadas</p>
           </div>
           <div className="flex items-center gap-3">
+            {canEntregar && (
+              <Link href="/actas/entrega" className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 transition-colors">
+                + Acta de entrega
+              </Link>
+            )}
             {canSalida && (
               <Link href="/actas/salida" className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-500 transition-colors">
                 + Salida de equipo
