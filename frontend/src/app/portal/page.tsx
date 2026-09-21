@@ -470,6 +470,7 @@ function PortalContent() {
         await uploadImagenesPortal(result.id, documento, ticketImagenes.map((i) => i.file)).catch(() => {});
       }
       setTicketNumero(result.numero);
+      clearTicketForm();
       setStep('confirmacion');
     } catch (err) {
       setTicketError(err instanceof Error ? err.message : 'Error al crear ticket');
@@ -478,10 +479,14 @@ function PortalContent() {
     }
   };
 
-  const resetTicket = () => {
+  const clearTicketForm = () => {
     setAsunto(''); setDescripcion(''); setCategoria('Incidente');
     setTipoSolicitud('Hardware'); setPrioridad('Media');
     setSelectedEquipos([]); setTicketImagenes([]); setTicketError('');
+  };
+
+  const resetTicket = () => {
+    clearTicketForm();
     setStep('portal');
   };
 
