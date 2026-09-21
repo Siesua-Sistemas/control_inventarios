@@ -10,7 +10,7 @@ import { NavBar } from '@/components/nav-bar';
 import { deleteEquipment, exportEquiposCsv, isAuthenticated, listEquipment, listEquipmentTipos, type EquipmentRow, type EquipmentTipo } from '@/lib/api';
 import { ESTADO_COLORS } from '@/lib/constants';
 
-const ESTADOS = ['Disponible', 'Asignado', 'En mantenimiento', 'Dañado', 'Prestado', 'En bodega', 'Perdido', 'Dado de baja'];
+const ESTADOS = ['Disponible', 'Asignado', 'En mantenimiento', 'Dañado', 'Prestado', 'En bodega', 'Perdido', 'Dado de baja', 'Devuelto a tercero'];
 const CRITICIDADES = ['Alta', 'Media', 'Baja'];
 const DOMINIOS = ['IT', 'Bioingeniería', 'General'];
 const CRITICIDAD_COLORS: Record<string, string> = {

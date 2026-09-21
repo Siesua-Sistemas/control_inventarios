@@ -64,14 +64,29 @@ def create_acta(
     user=Depends(require_any_permission('asignaciones:write', 'asignaciones:entregar', 'bodegas:write', 'actas:salida')),
 ):
     if payload.tipo == 'salida' and not (payload.cliente_empresa or '').strip():
-        raise HTTPException(status_code=400, detail='Debes indicar la empresa o cliente que recibe el equipo')
+        raise HTTPException(status_code=400, detail='Debes indicar el tercero (proveedor/arrendador) dueño del equipo')
     if payload.tipo == 'salida' and payload.tipo_salida not in ('consignacion', 'arrendamiento'):
-        raise HTTPException(status_code=400, detail='Indica si la salida es por consignación o arrendamiento')
+        raise HTTPException(status_code=400, detail='Indica si el equipo estaba en consignación o arrendamiento')
 
     data = payload.model_dump()
     data['created_by_id'] = user.id
     data['dominio'] = _infer_dominio(payload, db)
     acta = repo.create(data)
+
+    # Devolución a tercero: el equipo no es nuestro — al devolverlo, sale del inventario activo.
+    if payload.tipo == 'salida':
+        for item in payload.equipos_snapshot:
+            eq_id = item.get('id') if isinstance(item, dict) else None
+            if not eq_id:
+                continue
+            eq = db.get(Equipment, eq_id)
+            if eq:
+                eq.estado = 'Devuelto a tercero'
+                eq.empleado_id = None
+                eq.bodega_id = None
+                db.add(eq)
+        db.commit()
+
     return _to_row(acta)
 
 

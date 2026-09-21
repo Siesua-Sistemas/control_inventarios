@@ -28,7 +28,9 @@ const TIPO_SALIDA_LABEL: Record<string, string> = {
 export default function ActasHistorialPage() {
   const router = useRouter();
   const { loading: authLoading, hasPermission } = useAuth();
-  const canSalida = authLoading || hasPermission('actas:salida') || hasPermission('asignaciones:write') || hasPermission('bodegas:write');
+  const canSalida = authLoading
+    || hasPermission('actas:salida') || hasPermission('asignaciones:write') || hasPermission('bodegas:write')
+    || hasPermission('equipos:baja_solicitar');
   const [actas, setActas] = useState<ActaEntregaRow[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -75,7 +77,7 @@ export default function ActasHistorialPage() {
           <div className="flex items-center gap-3">
             {canSalida && (
               <Link href="/actas/salida" className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-500 transition-colors">
-                + Registrar salida
+                + Salida de equipo
               </Link>
             )}
             <span className="rounded-2xl bg-indigo-100 px-5 py-2 text-2xl font-bold text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-400">{total}</span>

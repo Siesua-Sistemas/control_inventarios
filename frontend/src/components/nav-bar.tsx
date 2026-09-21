@@ -27,7 +27,7 @@ const NAV_ITEMS: NavItem[] = [
     { href: '/asignaciones', label: 'Asignaciones', permission: 'asignaciones:read' },
     { href: '/historial', label: 'Historial', permission: 'asignaciones:read' },
     { href: '/actas', label: 'Actas de entrega', permission: null },
-    { href: '/actas/salida', label: 'Actas de salida', permission: 'actas:salida' },
+    { href: '/actas/salida', label: 'Salida de equipos', permission: 'actas:salida' },
   ]},
   { label: 'Mantenimiento', links: [
     { href: '/mantenimientos', label: 'Panel', permission: 'mantenimientos:read' },

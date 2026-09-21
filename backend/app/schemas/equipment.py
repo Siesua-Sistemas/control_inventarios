@@ -6,7 +6,7 @@ from pydantic import BaseModel, field_validator
 
 ESTADOS_VALIDOS = {
     'Disponible', 'Asignado', 'En mantenimiento',
-    'Dañado', 'Prestado', 'En bodega', 'Perdido', 'Dado de baja',
+    'Dañado', 'Prestado', 'En bodega', 'Perdido', 'Dado de baja', 'Devuelto a tercero',
 }
 CRITICIDADES_VALIDAS = {'Alta', 'Media', 'Baja'}
 DOMINIOS_VALIDOS = {'IT', 'Bioingeniería', 'General'}

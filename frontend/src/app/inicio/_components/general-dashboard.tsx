@@ -17,6 +17,7 @@ const ESTADO_COLORS: Record<string, string> = {
   'En bodega':        'bg-stone-500',
   'Perdido':          'bg-orange-600',
   'Dado de baja':     'bg-stone-700',
+  'Devuelto a tercero': 'bg-zinc-600',
 };
 
 export function GeneralDashboardContent() {

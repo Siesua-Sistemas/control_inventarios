@@ -9,6 +9,7 @@ export const ESTADO_COLORS: Record<string, string> = {
   'Prestado':         'bg-violet-100 text-violet-700 border-violet-300 dark:bg-violet-900/40 dark:text-violet-400 dark:border-violet-700/40',
   'Perdido':          'bg-orange-100 text-orange-700 border-orange-300 dark:bg-orange-900/40 dark:text-orange-400 dark:border-orange-700/40',
   'Dado de baja':     'bg-stone-200 text-stone-700 border-stone-300 dark:bg-stone-900/50 dark:text-stone-600 dark:border-stone-800',
+  'Devuelto a tercero': 'bg-zinc-200 text-zinc-700 border-zinc-300 dark:bg-zinc-800/50 dark:text-zinc-400 dark:border-zinc-700',
 };
 
 // Colores por tipo de movimiento
