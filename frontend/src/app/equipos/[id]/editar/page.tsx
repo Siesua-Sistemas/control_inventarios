@@ -48,6 +48,7 @@ export default function EditarEquipoPage() {
           fecha_calibracion: data.fecha_calibracion,
           vencimiento_calibracion: data.vencimiento_calibracion,
           frecuencia_calibracion_meses: data.frecuencia_calibracion_meses,
+          registro_sanitario: data.registro_sanitario,
           bodega_id: data.bodega_id, empleado_id: data.empleado_id,
           parent_equipment_id: data.parent_equipment_id,
         });
@@ -278,6 +279,18 @@ export default function EditarEquipoPage() {
                   placeholder="Ej: 12"
                 />
               </div>
+              {form.dominio === 'Bioingeniería' && (
+                <div className={fieldClass}>
+                  <label htmlFor="registro_sanitario" className={labelClass}>Registro sanitario (INVIMA)</label>
+                  <input
+                    id="registro_sanitario"
+                    className="w-full"
+                    value={form.registro_sanitario ?? ''}
+                    onChange={(e) => set('registro_sanitario', e.target.value)}
+                    placeholder="Ej: INVIMA 2024DM-0001234"
+                  />
+                </div>
+              )}
             </div>
           </section>
 

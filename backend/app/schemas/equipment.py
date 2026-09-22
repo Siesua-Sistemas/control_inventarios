@@ -38,6 +38,7 @@ class EquipmentCreate(BaseModel):
     fecha_calibracion: date | None = None
     vencimiento_calibracion: date | None = None
     frecuencia_calibracion_meses: int | None = None
+    registro_sanitario: str | None = None
 
     @field_validator('serial')
     @classmethod
@@ -85,6 +86,7 @@ class EquipmentUpdate(BaseModel):
     fecha_calibracion: date | None = None
     vencimiento_calibracion: date | None = None
     frecuencia_calibracion_meses: int | None = None
+    registro_sanitario: str | None = None
 
     @field_validator('estado')
     @classmethod
@@ -124,6 +126,7 @@ class EquipmentOut(BaseModel):
     fecha_calibracion: date | None
     vencimiento_calibracion: date | None
     frecuencia_calibracion_meses: int | None
+    registro_sanitario: str | None = None
     bodega_id: int | None
     empleado_id: int | None
     empleado_nombre: str | None = None

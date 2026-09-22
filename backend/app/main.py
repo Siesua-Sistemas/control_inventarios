@@ -349,6 +349,9 @@ def _run_migrations() -> None:
         conn.execute(text(
             'CREATE INDEX IF NOT EXISTS ix_baja_equipo_fotos_baja_id ON baja_equipo_fotos(baja_id)'
         ))
+
+        # Registro sanitario (INVIMA) — solo aplica a equipos biomédicos
+        conn.execute(text('ALTER TABLE equipment ADD COLUMN IF NOT EXISTS registro_sanitario VARCHAR(80)'))
         conn.commit()
 
 

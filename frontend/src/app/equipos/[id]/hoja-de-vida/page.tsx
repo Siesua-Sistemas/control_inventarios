@@ -527,6 +527,7 @@ function PerifeicosTab({
     fecha_compra: null, valor: null, proveedor: null,
     numero_factura: null, garantia_vence: null, observaciones: null, specs: null,
     fecha_calibracion: null, vencimiento_calibracion: null, frecuencia_calibracion_meses: null,
+    registro_sanitario: null,
   };
 
   async function assignParent(parentId: number | null) {

@@ -19,6 +19,7 @@ const EMPTY: EquipmentPayload = {
   fecha_compra: null, valor: null,
   proveedor: null, numero_factura: null, garantia_vence: null, observaciones: null,
   fecha_calibracion: null, vencimiento_calibracion: null, frecuencia_calibracion_meses: null,
+  registro_sanitario: null,
 };
 
 const fieldClass = 'flex flex-col gap-1.5';
@@ -250,6 +251,18 @@ export default function NuevoEquipoPage() {
                   placeholder="Ej: 12"
                 />
               </div>
+              {form.dominio === 'Bioingeniería' && (
+                <div className={fieldClass}>
+                  <label htmlFor="registro_sanitario" className={labelClass}>Registro sanitario (INVIMA)</label>
+                  <input
+                    id="registro_sanitario"
+                    className="w-full"
+                    value={form.registro_sanitario ?? ''}
+                    onChange={(e) => set('registro_sanitario', e.target.value)}
+                    placeholder="Ej: INVIMA 2024DM-0001234"
+                  />
+                </div>
+              )}
             </div>
           </section>
 

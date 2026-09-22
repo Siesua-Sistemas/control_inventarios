@@ -41,6 +41,9 @@ class Equipment(Base):
     criticidad = Column(String(10), nullable=False, default='Media', server_default='Media')
     observaciones = Column(String(500), nullable=True)
 
+    # Solo aplica a equipos biomédicos (dominio='Bioingeniería')
+    registro_sanitario = Column(String(80), nullable=True)
+
     # Calibración / metrología
     fecha_calibracion = Column(Date, nullable=True)
     vencimiento_calibracion = Column(Date, nullable=True)

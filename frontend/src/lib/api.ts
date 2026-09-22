@@ -197,6 +197,7 @@ export interface EquipmentRow {
   fecha_calibracion: string | null;
   vencimiento_calibracion: string | null;
   frecuencia_calibracion_meses: number | null;
+  registro_sanitario: string | null;
   bodega_id: number | null;
   empleado_id: number | null;
   empleado_nombre?: string | null;
@@ -780,10 +781,12 @@ export interface MantenimientoRow {
   numero_ot: string | null;
   equipment_id: number;
   equipment_codigo: string;
+  equipment_serial: string;
   equipment_marca: string;
   equipment_modelo: string;
   equipment_tipo: string;
   equipment_sede: string;
+  equipment_registro_sanitario: string | null;
   tipo: string;
   fecha: string;
   tecnico: string | null;

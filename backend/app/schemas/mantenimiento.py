@@ -141,10 +141,12 @@ class MantenimientoOut(BaseModel):
     numero_ot: str | None
     equipment_id: int
     equipment_codigo: str
+    equipment_serial: str
     equipment_marca: str
     equipment_modelo: str
     equipment_tipo: str
     equipment_sede: str
+    equipment_registro_sanitario: str | None = None
     tipo: str
     fecha: datetime
     tecnico: str | None

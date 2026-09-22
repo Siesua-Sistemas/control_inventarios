@@ -122,6 +122,7 @@ class EquipmentService:
             numero_factura=payload.numero_factura.strip() if payload.numero_factura else None,
             garantia_vence=payload.garantia_vence,
             observaciones=payload.observaciones.strip() if payload.observaciones else None,
+            registro_sanitario=payload.registro_sanitario.strip() if payload.registro_sanitario else None,
             proximo_preventivo=proximo_preventivo,
         )
         return self.repository.create(equipment)

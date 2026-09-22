@@ -106,17 +106,31 @@ export default function ImprimirMantenimientoPage() {
               <p className="mt-0.5 font-mono font-semibold">{m.equipment_codigo}</p>
             </div>
             <div>
-              <p className="text-xs text-slate-500">Tipo</p>
-              <p className="mt-0.5 font-semibold">{m.equipment_tipo}</p>
+              <p className="text-xs text-slate-500">Serial</p>
+              <p className="mt-0.5 font-mono font-semibold">{m.equipment_serial}</p>
             </div>
             <div>
-              <p className="text-xs text-slate-500">Marca / Modelo</p>
-              <p className="mt-0.5 font-semibold">{m.equipment_marca} {m.equipment_modelo}</p>
+              <p className="text-xs text-slate-500">Marca</p>
+              <p className="mt-0.5 font-semibold">{m.equipment_marca}</p>
+            </div>
+            <div>
+              <p className="text-xs text-slate-500">Modelo</p>
+              <p className="mt-0.5 font-semibold">{m.equipment_modelo}</p>
+            </div>
+            <div>
+              <p className="text-xs text-slate-500">Tipo</p>
+              <p className="mt-0.5 font-semibold">{m.equipment_tipo}</p>
             </div>
             <div>
               <p className="text-xs text-slate-500">Sede</p>
               <p className="mt-0.5 font-semibold">{m.equipment_sede}</p>
             </div>
+            {m.equipment_registro_sanitario && (
+              <div className="col-span-2">
+                <p className="text-xs text-slate-500">Registro sanitario</p>
+                <p className="mt-0.5 font-mono font-semibold">{m.equipment_registro_sanitario}</p>
+              </div>
+            )}
           </div>
         </section>
 
