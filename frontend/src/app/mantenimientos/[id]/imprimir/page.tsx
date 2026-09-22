@@ -37,6 +37,13 @@ export default function ImprimirMantenimientoPage() {
       .finally(() => setLoading(false));
   }, [id, router]);
 
+  // "Imprimir OT" abre esta página en una pestaña nueva (target="_blank"), así que
+  // no hay historial al que volver — en ese caso, cerramos la pestaña.
+  const handleVolver = () => {
+    if (window.history.length > 1) router.back();
+    else window.close();
+  };
+
   if (loading) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-white">
@@ -49,7 +56,7 @@ export default function ImprimirMantenimientoPage() {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center gap-4 bg-white">
         <p className="text-red-600">{error || 'Error'}</p>
-        <button onClick={() => router.back()} className="text-blue-600 underline">Volver</button>
+        <button onClick={handleVolver} className="text-blue-600 underline">Volver</button>
       </main>
     );
   }
@@ -69,7 +76,7 @@ export default function ImprimirMantenimientoPage() {
     <>
       {/* Controles — se ocultan al imprimir */}
       <div className="print:hidden fixed top-0 left-0 right-0 z-50 flex items-center justify-between bg-slate-900 px-6 py-3 shadow-lg">
-        <button onClick={() => router.back()} className="rounded-md bg-slate-700 px-4 py-2 text-sm text-slate-200 hover:bg-slate-600">
+        <button onClick={handleVolver} className="rounded-md bg-slate-700 px-4 py-2 text-sm text-slate-200 hover:bg-slate-600">
           ← Volver
         </button>
         <button
