@@ -123,6 +123,8 @@ export function MantenimientoModal({ mantenimiento: initial, onClose, onUpdate }
   const canUpdate = hasPermission('mantenimientos:update') || hasPermission('mantenimientos:write');
   const canManage = hasPermission('mantenimientos:write');
   const canApprove = hasPermission('mantenimientos:approve');
+  // Una OT aprobada es un registro inalterable (el backend también lo rechaza) — se muestra en modo lectura.
+  const isLocked = m.estado === 'aprobado';
 
   // ── Firma modal ───────────────────────────────────────────────────────────
   if (firmaMode) {
@@ -299,14 +301,21 @@ export function MantenimientoModal({ mantenimiento: initial, onClose, onUpdate }
         </div>
 
         {/* Checklist interactivo */}
-        {(totalPasos > 0 || canManage) && (
+        {(totalPasos > 0 || (canManage && !isLocked)) && (
           <div className="mx-6 mb-4">
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">Checklist</p>
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Checklist</p>
+              {isLocked && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-medium text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                  🔒 Solo lectura — OT aprobada
+                </span>
+              )}
+            </div>
             <MantenimientoChecklist
               mantenimientoId={m.id}
               pasos={m.pasos}
-              canFill={canUpdate}
-              canManage={canManage}
+              canFill={canUpdate && !isLocked}
+              canManage={canManage && !isLocked}
               onRefresh={refreshChecklist}
             />
           </div>
