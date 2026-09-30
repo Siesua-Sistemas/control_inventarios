@@ -425,6 +425,7 @@ def seed_data():
             ('mantenimientos:create', 'Crear mantenimientos', 'Permite registrar nuevos mantenimientos'),
             ('mantenimientos:update', 'Actualizar mantenimientos', 'Permite marcar como realizado y reprogramar la próxima fecha'),
             ('mantenimientos:write', 'Editar mantenimientos', 'Permite editar el contenido de mantenimientos registrados'),
+            ('mantenimientos:checklist_manage', 'Editar estructura del checklist', 'Permite agregar o eliminar pasos del checklist de una OT (distinto de solo diligenciarlo)'),
             ('mantenimientos:delete', 'Eliminar mantenimientos', 'Permite eliminar registros de mantenimiento'),
             ('equipment_types:write', 'Gestionar tipos de equipo', 'Permite crear y editar tipos de equipo y su ficha técnica'),
             ('reports:export', 'Descargar reportes CSV', 'Permite descargar reportes en formato CSV (equipos, historial y actas)'),

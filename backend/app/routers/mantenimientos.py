@@ -352,7 +352,7 @@ def add_paso(
     mantenimiento_id: int,
     payload: PasoCreate,
     db: Session = Depends(get_db),
-    _user=Depends(require_any_permission('mantenimientos:update', 'mantenimientos:write')),
+    _user=Depends(require_permissions('mantenimientos:checklist_manage')),
 ):
     _assert_editable(_get_mantenimiento(mantenimiento_id, db))
     paso = MantenimientoPaso(
@@ -415,7 +415,7 @@ def delete_paso(
     mantenimiento_id: int,
     paso_id: int,
     db: Session = Depends(get_db),
-    _user=Depends(require_permissions('mantenimientos:write')),
+    _user=Depends(require_permissions('mantenimientos:checklist_manage')),
 ):
     _assert_editable(_get_mantenimiento(mantenimiento_id, db))
     paso = db.scalar(

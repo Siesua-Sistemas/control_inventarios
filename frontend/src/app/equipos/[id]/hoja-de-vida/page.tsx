@@ -924,6 +924,7 @@ function MantenimientoTab({ equipmentId }: { equipmentId: number }) {
   const canDelete = authLoading || hasPermission('mantenimientos:delete');
   const canApprove = authLoading || hasPermission('mantenimientos:approve');
   const canUpdate = authLoading || hasPermission('mantenimientos:update');
+  const canManageChecklist = authLoading || hasPermission('mantenimientos:checklist_manage');
   const [records, setRecords] = useState<MantenimientoRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -1209,7 +1210,7 @@ function MantenimientoTab({ equipmentId }: { equipmentId: number }) {
                   mantenimientoId={editing}
                   pasos={current?.pasos ?? []}
                   canFill={canUpdate}
-                  canManage={canWrite}
+                  canManage={canManageChecklist}
                   onRefresh={fetchRecords}
                 />
 

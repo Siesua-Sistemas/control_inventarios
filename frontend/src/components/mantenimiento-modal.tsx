@@ -121,7 +121,7 @@ export function MantenimientoModal({ mantenimiento: initial, onClose, onUpdate }
   const obligatoriosPendientes = (m.pasos ?? []).filter((p) => (p.obligatorio ?? true) && !p.completado);
   const puedeCompletar = obligatoriosPendientes.length === 0;
   const canUpdate = hasPermission('mantenimientos:update') || hasPermission('mantenimientos:write');
-  const canManage = hasPermission('mantenimientos:write');
+  const canManage = hasPermission('mantenimientos:checklist_manage');
   const canApprove = hasPermission('mantenimientos:approve');
   // Una OT aprobada es un registro inalterable (el backend también lo rechaza) — se muestra en modo lectura.
   const isLocked = m.estado === 'aprobado';

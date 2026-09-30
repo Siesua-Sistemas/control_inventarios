@@ -105,10 +105,11 @@ export function MantenimientoChecklist({ mantenimientoId, pasos, canFill, canMan
     }
   }
 
-  async function remove(pasoId: number) {
-    setBusyId(pasoId);
+  async function remove(paso: PasoRow) {
+    if (!window.confirm(`¿Eliminar el paso "${paso.descripcion}" del checklist? No se puede deshacer.`)) return;
+    setBusyId(paso.id);
     try {
-      await deletePaso(mantenimientoId, pasoId);
+      await deletePaso(mantenimientoId, paso.id);
       await onRefresh();
     } finally {
       setBusyId(null);
@@ -188,7 +189,7 @@ export function MantenimientoChecklist({ mantenimientoId, pasos, canFill, canMan
                   {canManage && (
                     <button
                       type="button"
-                      onClick={() => remove(paso.id)}
+                      onClick={() => remove(paso)}
                       disabled={busy}
                       className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-slate-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-500/10 dark:hover:text-red-400"
                     >
@@ -226,7 +227,7 @@ export function MantenimientoChecklist({ mantenimientoId, pasos, canFill, canMan
                   {canManage && (
                     <button
                       type="button"
-                      onClick={() => remove(paso.id)}
+                      onClick={() => remove(paso)}
                       disabled={busy}
                       className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-slate-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-500/10 dark:hover:text-red-400"
                     >
