@@ -12,6 +12,11 @@ interface MantenimientoChecklistProps {
   /** Puede agregar o eliminar pasos del checklist (supervisor/admin). */
   canManage: boolean;
   onRefresh: () => void | Promise<void>;
+  /**
+   * OT aprobada / cerrada: se muestra como informe técnico terminado — texto plano de
+   * resultados, sin bordes de campo ni botones — en vez de un formulario deshabilitado.
+   */
+  reportMode?: boolean;
 }
 
 function IconTrash({ className = 'h-4 w-4' }: { className?: string }) {
@@ -57,7 +62,7 @@ function fueraDeRango(p: PasoRow): boolean {
   return false;
 }
 
-export function MantenimientoChecklist({ mantenimientoId, pasos, canFill, canManage, onRefresh }: MantenimientoChecklistProps) {
+export function MantenimientoChecklist({ mantenimientoId, pasos, canFill, canManage, onRefresh, reportMode = false }: MantenimientoChecklistProps) {
   const [local, setLocal] = useState<PasoRow[]>(pasos);
   useEffect(() => { setLocal(pasos); }, [pasos]);
 
@@ -68,6 +73,10 @@ export function MantenimientoChecklist({ mantenimientoId, pasos, canFill, canMan
   const total = local.length;
   const done = local.filter((p) => p.completado).length;
   const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+
+  if (reportMode) {
+    return <ChecklistReport pasos={local} />;
+  }
 
   async function toggle(paso: PasoRow) {
     if (!canFill) return;
@@ -319,6 +328,82 @@ export function MantenimientoChecklist({ mantenimientoId, pasos, canFill, canMan
           </button>
         </form>
       )}
+    </div>
+  );
+}
+
+// ── Modo informe: OT cerrada — texto de resultados, sin apariencia de formulario ──
+
+function ChecklistReport({ pasos }: { pasos: PasoRow[] }) {
+  const total = pasos.length;
+  const done = pasos.filter((p) => p.completado).length;
+
+  return (
+    <div className="space-y-3">
+      {total > 0 && (
+        <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
+          {done} de {total} puntos conformes
+        </p>
+      )}
+      <div className="divide-y divide-slate-100 rounded-2xl border border-slate-200 bg-white dark:divide-slate-800 dark:border-slate-800 dark:bg-slate-900">
+        {pasos.map((paso) => {
+          const tipo = paso.tipo_campo ?? 'checkbox';
+          const opcional = paso.obligatorio === false;
+          const outOfRange = fueraDeRango(paso);
+
+          return (
+            <div key={paso.id} className="flex items-start gap-3 px-4 py-3">
+              <span
+                className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${
+                  paso.completado
+                    ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400'
+                    : 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-600'
+                }`}
+              >
+                {paso.completado ? <IconCheck className="h-3 w-3" /> : <span className="h-1 w-1 rounded-full bg-current" />}
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm text-slate-800 dark:text-slate-200">
+                  {paso.descripcion}
+                  {opcional && <span className="ml-1.5 text-xs font-normal text-slate-400">(opcional)</span>}
+                </p>
+
+                {tipo === 'checkbox' && (
+                  <p className={`mt-0.5 text-xs ${paso.completado ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400'}`}>
+                    {paso.completado ? 'Conforme' : 'No conforme'}
+                  </p>
+                )}
+
+                {tipo === 'numero' && (
+                  <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-sm">
+                    <span className="font-semibold text-slate-800 dark:text-slate-200">
+                      {paso.valor !== null && paso.valor !== '' ? fmtNum(paso.valor) : '—'}
+                    </span>
+                    {paso.unidad && <span className="text-slate-500 dark:text-slate-400">{paso.unidad}</span>}
+                    {outOfRange && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700 dark:bg-red-500/20 dark:text-red-300">
+                        <IconWarning /> fuera de rango
+                      </span>
+                    )}
+                  </p>
+                )}
+
+                {tipo === 'texto' && (
+                  <p className="mt-0.5 text-sm text-slate-600 dark:text-slate-400">
+                    {paso.valor?.trim() ? paso.valor : '—'}
+                  </p>
+                )}
+
+                {tipo === 'seleccion' && (
+                  <p className="mt-0.5 text-sm font-semibold text-slate-800 dark:text-slate-200">
+                    {paso.valor || '—'}
+                  </p>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

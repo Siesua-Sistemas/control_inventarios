@@ -300,23 +300,26 @@ export function MantenimientoModal({ mantenimiento: initial, onClose, onUpdate }
           </div>
         </div>
 
-        {/* Checklist interactivo */}
+        {/* Checklist: interactivo mientras se ejecuta, informe de solo lectura una vez aprobada */}
         {(totalPasos > 0 || (canManage && !isLocked)) && (
           <div className="mx-6 mb-4">
             <div className="mb-2 flex items-center justify-between">
-              <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Checklist</p>
+              <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                {isLocked ? 'Informe técnico del servicio' : 'Checklist'}
+              </p>
               {isLocked && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-medium text-slate-500 dark:bg-slate-800 dark:text-slate-400">
-                  🔒 Solo lectura — OT aprobada
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-medium text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
+                  ✓ OT aprobada
                 </span>
               )}
             </div>
             <MantenimientoChecklist
               mantenimientoId={m.id}
               pasos={m.pasos}
-              canFill={canUpdate && !isLocked}
-              canManage={canManage && !isLocked}
+              canFill={canUpdate}
+              canManage={canManage}
               onRefresh={refreshChecklist}
+              reportMode={isLocked}
             />
           </div>
         )}
