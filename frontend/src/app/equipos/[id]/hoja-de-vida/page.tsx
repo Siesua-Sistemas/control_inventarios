@@ -6,12 +6,12 @@ import { useEffect, useRef, useState } from 'react';
 
 import { useAuth } from '@/components/auth-provider';
 import { DatePickerPresets } from '@/components/date-picker-presets';
+import { MantenimientoChecklist } from '@/components/mantenimiento-checklist';
 import { MantenimientoModal } from '@/components/mantenimiento-modal';
 import { NavBar } from '@/components/nav-bar';
 import { PhotoGrid } from '@/components/photo-grid';
 import { SignaturePad } from '@/components/signature-pad';
 import {
-  addPaso,
   aprobarMantenimiento,
   createCredencial,
   createEquipment,
@@ -21,7 +21,6 @@ import {
   deleteEquipmentPhoto,
   deleteMantenimiento,
   deleteMantenimientoPhoto,
-  deletePaso,
   firmarTecnico,
   getEquipmentProfile,
   isAuthenticated,
@@ -36,7 +35,6 @@ import {
   updateCredencial,
   updateEquipmentSpecs,
   updateMantenimiento,
-  updatePaso,
   uploadEquipmentDocumento,
   uploadEquipmentPhoto,
   uploadMantenimientoPhoto,
@@ -52,7 +50,6 @@ import {
   type EquipoTrazabilidadActa,
   type MantenimientoPayload,
   type MantenimientoRow,
-  type PasoRow,
   type SpecField,
 } from '@/lib/api';
 import { ESTADO_COLORS } from '@/lib/constants';
@@ -919,188 +916,6 @@ const ESTADO_OT_BADGE: Record<string, string> = {
   rechazado: 'bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-300',
 };
 
-function ChecklistSection({
-  mantenimientoId,
-  pasos,
-  canWrite,
-  onRefresh,
-}: {
-  mantenimientoId: number;
-  pasos: PasoRow[];
-  canWrite: boolean;
-  onRefresh: () => void;
-}) {
-  const [newDesc, setNewDesc] = useState('');
-  const [adding, setAdding] = useState(false);
-  const total = pasos.length;
-  const done = pasos.filter((p) => p.completado).length;
-
-  async function handleAdd(e: React.FormEvent) {
-    e.preventDefault();
-    if (!newDesc.trim()) return;
-    setAdding(true);
-    try {
-      await addPaso(mantenimientoId, newDesc.trim(), total);
-      setNewDesc('');
-      onRefresh();
-    } finally { setAdding(false); }
-  }
-
-  const [localPasos, setLocalPasos] = useState<PasoRow[]>(pasos);
-  useEffect(() => { setLocalPasos(pasos); }, [pasos]);
-
-  async function toggle(paso: PasoRow) {
-    setLocalPasos((prev) => prev.map((p) => (p.id === paso.id ? { ...p, completado: !paso.completado } : p)));
-    await updatePaso(mantenimientoId, paso.id, { completado: !paso.completado });
-    onRefresh();
-  }
-
-  function setValorLocal(pasoId: number, valor: string) {
-    setLocalPasos((prev) => prev.map((p) => (p.id === pasoId ? { ...p, valor } : p)));
-  }
-
-  async function saveValor(pasoId: number, valor: string) {
-    await updatePaso(mantenimientoId, pasoId, { valor });
-    onRefresh();
-  }
-
-  async function remove(pasoId: number) {
-    await deletePaso(mantenimientoId, pasoId);
-    onRefresh();
-  }
-
-  const fmtNum = (s: string | null): string | null => (s == null || s === '' ? null : String(Number(s)));
-
-  function fueraDeRango(p: PasoRow): boolean {
-    if (p.tipo_campo !== 'numero' || !p.valor) return false;
-    const n = Number(p.valor);
-    if (Number.isNaN(n)) return false;
-    if (p.valor_min != null && n < Number(p.valor_min)) return true;
-    if (p.valor_max != null && n > Number(p.valor_max)) return true;
-    return false;
-  }
-
-  return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <h5 className="text-xs font-medium uppercase tracking-wider text-slate-600 dark:text-slate-400">
-          Checklist {total > 0 && <span className="ml-1 text-slate-400">({done}/{total})</span>}
-        </h5>
-        {total > 0 && (
-          <div className="h-1.5 w-24 rounded-full bg-slate-200 dark:bg-slate-700">
-            <div
-              className="h-1.5 rounded-full bg-emerald-500 transition-all"
-              style={{ width: `${total > 0 ? (done / total) * 100 : 0}%` }}
-            />
-          </div>
-        )}
-      </div>
-      {localPasos.map((paso) => {
-        const tipo = paso.tipo_campo ?? 'checkbox';
-        const opcional = paso.obligatorio === false;
-
-        if (tipo === 'checkbox') {
-          return (
-            <div key={paso.id} className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-700 dark:bg-slate-800/40">
-              <input
-                type="checkbox"
-                checked={paso.completado}
-                disabled={!canWrite}
-                onChange={() => toggle(paso)}
-                className="h-4 w-4 accent-emerald-500 cursor-pointer disabled:cursor-default"
-              />
-              <span className={`flex-1 text-sm ${paso.completado ? 'line-through text-slate-400 dark:text-slate-600' : 'text-slate-800 dark:text-slate-200'}`}>
-                {paso.descripcion}
-                {opcional && <span className="ml-1 text-xs text-slate-400">(opcional)</span>}
-              </span>
-              {canWrite && (
-                <button type="button" onClick={() => remove(paso.id)} className="text-xs text-slate-400 hover:text-red-500">✕</button>
-              )}
-            </div>
-          );
-        }
-
-        const outOfRange = fueraDeRango(paso);
-        return (
-          <div key={paso.id} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-700 dark:bg-slate-800/40">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-sm text-slate-800 dark:text-slate-200">
-                {paso.descripcion}
-                {opcional && <span className="ml-1 text-xs text-slate-400">(opcional)</span>}
-              </span>
-              {canWrite && (
-                <button type="button" onClick={() => remove(paso.id)} className="shrink-0 text-xs text-slate-400 hover:text-red-500">✕</button>
-              )}
-            </div>
-            <div className="mt-1.5">
-              {tipo === 'numero' && (
-                <div className="flex flex-wrap items-center gap-2">
-                  <input
-                    type="number"
-                    step="any"
-                    disabled={!canWrite}
-                    value={paso.valor ?? ''}
-                    onChange={(e) => setValorLocal(paso.id, e.target.value)}
-                    onBlur={(e) => canWrite && saveValor(paso.id, e.target.value)}
-                    placeholder={paso.valor_min != null || paso.valor_max != null ? `${fmtNum(paso.valor_min) ?? ''}–${fmtNum(paso.valor_max) ?? ''}` : 'Valor'}
-                    className={`w-32 rounded-lg border bg-white px-3 py-1.5 text-sm text-slate-900 focus:outline-none disabled:opacity-60 dark:bg-slate-900 dark:text-white ${outOfRange ? 'border-red-500 focus:border-red-500' : 'border-slate-300 focus:border-cyan-500 dark:border-slate-700'}`}
-                  />
-                  {paso.unidad && <span className="text-sm text-slate-500">{paso.unidad}</span>}
-                  {(paso.valor_min != null || paso.valor_max != null) && (
-                    <span className="text-xs text-slate-400">
-                      rango {fmtNum(paso.valor_min) ?? '−∞'}–{fmtNum(paso.valor_max) ?? '∞'}
-                    </span>
-                  )}
-                  {outOfRange && (
-                    <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700 dark:bg-red-500/20 dark:text-red-300">
-                      ⚠ fuera de rango
-                    </span>
-                  )}
-                </div>
-              )}
-              {tipo === 'texto' && (
-                <input
-                  type="text"
-                  disabled={!canWrite}
-                  value={paso.valor ?? ''}
-                  onChange={(e) => setValorLocal(paso.id, e.target.value)}
-                  onBlur={(e) => canWrite && saveValor(paso.id, e.target.value)}
-                  placeholder="Escribe el resultado..."
-                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 focus:border-cyan-500 focus:outline-none disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
-                />
-              )}
-              {tipo === 'seleccion' && (
-                <select
-                  disabled={!canWrite}
-                  value={paso.valor ?? ''}
-                  onChange={(e) => canWrite && saveValor(paso.id, e.target.value)}
-                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 focus:border-cyan-500 focus:outline-none disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
-                >
-                  <option value="">— Seleccionar —</option>
-                  {(paso.opciones ?? []).map((o) => <option key={o} value={o}>{o}</option>)}
-                </select>
-              )}
-            </div>
-          </div>
-        );
-      })}
-      {canWrite && (
-        <form onSubmit={handleAdd} className="flex gap-2">
-          <input
-            type="text"
-            placeholder="Agregar paso..."
-            value={newDesc}
-            onChange={(e) => setNewDesc(e.target.value)}
-            className="flex-1 text-sm"
-          />
-          <button type="submit" disabled={adding || !newDesc.trim()} className="rounded-md bg-slate-200 px-3 py-1.5 text-xs font-medium text-slate-800 hover:bg-slate-300 disabled:opacity-50 dark:bg-slate-700 dark:text-slate-200">
-            {adding ? '...' : 'Agregar'}
-          </button>
-        </form>
-      )}
-    </div>
-  );
-}
 
 function MantenimientoTab({ equipmentId }: { equipmentId: number }) {
   const { loading: authLoading, hasPermission } = useAuth();
@@ -1390,10 +1205,11 @@ function MantenimientoTab({ equipmentId }: { equipmentId: number }) {
                   />
                 </div>
 
-                <ChecklistSection
+                <MantenimientoChecklist
                   mantenimientoId={editing}
                   pasos={current?.pasos ?? []}
-                  canWrite={canWrite}
+                  canFill={canUpdate}
+                  canManage={canWrite}
                   onRefresh={fetchRecords}
                 />
 
