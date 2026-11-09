@@ -204,7 +204,7 @@ def _empleado_del_enlace(db: Session, enlace: EnlaceAcceso) -> Empleado:
     return empleado
 
 
-def _paso_nuevo(db: Session, enlace: EnlaceAcceso, datos: dict) -> None:
+def _paso_nuevo(db: Session, enlace: EnlaceAcceso, datos: dict, ip: str | None) -> None:
     d = _parse(NuevoIn, datos)
     if buscar_empleado(db, enlace.cedula) is not None:
         raise HTTPException(status.HTTP_409_CONFLICT, 'La cédula ya está registrada')
@@ -225,7 +225,7 @@ def _paso_nuevo(db: Session, enlace: EnlaceAcceso, datos: dict) -> None:
     enlace.empleado_id = empleado.id
 
 
-def _paso_password(db: Session, enlace: EnlaceAcceso, datos: dict) -> None:
+def _paso_password(db: Session, enlace: EnlaceAcceso, datos: dict, ip: str | None) -> None:
     d = _parse(PasswordIn, datos)
     empleado = _empleado_del_enlace(db, enlace)
     user = buscar_cuenta(db, empleado)
@@ -239,14 +239,14 @@ def _paso_password(db: Session, enlace: EnlaceAcceso, datos: dict) -> None:
         rt.revoked_at = ahora
 
 
-def _paso_datos(db: Session, enlace: EnlaceAcceso, datos: dict) -> None:
+def _paso_datos(db: Session, enlace: EnlaceAcceso, datos: dict, ip: str | None) -> None:
     d = _parse(DatosIn, datos)
     empleado = _empleado_del_enlace(db, enlace)
     empleado.email = d.email.strip().lower()
     empleado.telefono = d.telefono
 
 
-def _paso_ubicacion(db: Session, enlace: EnlaceAcceso, datos: dict) -> None:
+def _paso_ubicacion(db: Session, enlace: EnlaceAcceso, datos: dict, ip: str | None) -> None:
     d = _parse(UbicacionIn, datos)
     empleado = _empleado_del_enlace(db, enlace)
     sede = next((s for s in empleado.sedes_jornada if s.tipo == 'home_office'), None)
@@ -261,6 +261,10 @@ def _paso_ubicacion(db: Session, enlace: EnlaceAcceso, datos: dict) -> None:
     sede.ciudad = d.ciudad.strip()
     sede.latitud = d.latitud
     sede.longitud = d.longitud
+    # IP desde la que se registró la ubicación: queda como IP autorizada de la sede
+    # (la jornada la usa para marcar ip_verificada).
+    if ip:
+        sede.ip_autorizada = ip[:45]
     sede.is_active = True
 
 
@@ -272,7 +276,7 @@ _PASOS = {
 }
 
 
-def ejecutar_paso(db: Session, enlace: EnlaceAcceso, modulo: str, datos: dict) -> None:
+def ejecutar_paso(db: Session, enlace: EnlaceAcceso, modulo: str, datos: dict, ip: str | None = None) -> None:
     """Aplica un trámite y avanza el asistente. El enlace debe venir bloqueado con FOR UPDATE
     para que dos peticiones simultáneas no completen el mismo paso (un solo uso)."""
     if modulo not in enlace.modulos:
@@ -284,7 +288,7 @@ def ejecutar_paso(db: Session, enlace: EnlaceAcceso, modulo: str, datos: dict) -
     if modulo != pendientes[0]:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f'Primero completa: {MODULOS[pendientes[0]]}')
 
-    _PASOS[modulo](db, enlace, datos)
+    _PASOS[modulo](db, enlace, datos, ip)
 
     hechos.append(modulo)
     enlace.pasos_completados = hechos

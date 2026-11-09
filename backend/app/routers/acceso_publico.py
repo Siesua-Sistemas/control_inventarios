@@ -44,10 +44,14 @@ def _modulos(codigos: list[str]) -> list[ModuloOut]:
     return [ModuloOut(codigo=c, titulo=svc.MODULOS[c]) for c in codigos]
 
 
-def _log(db: Session, request: Request, enlace_id: int, resultado: str, detalle: str) -> None:
-    ip = request.headers.get('x-forwarded-for', '').split(',')[0].strip() or (
+def _ip(request: Request) -> str | None:
+    return request.headers.get('x-forwarded-for', '').split(',')[0].strip() or (
         request.client.host if request.client else None
     )
+
+
+def _log(db: Session, request: Request, enlace_id: int, resultado: str, detalle: str) -> None:
+    ip = _ip(request)
     db.add(AuditLog(
         tipo_acceso='enlace', identificador=f'enlace:{enlace_id}', ip_address=ip,
         user_agent=request.headers.get('user-agent', '')[:500], resultado=resultado, detalle=detalle[:300],
@@ -95,7 +99,7 @@ def completar_paso(token: str, modulo: str, body: PasoIn, request: Request, db: 
     enlace = svc.obtener_enlace(db, token, lock=True)  # FOR UPDATE: un solo uso, sin carreras
     svc.exigir_activo(enlace)
     svc.confirmar_cedula(db, enlace, body.cedula)
-    svc.ejecutar_paso(db, enlace, modulo, body.datos)
-    _log(db, request, enlace.id, 'exitoso', f'Paso {modulo}')
+    svc.ejecutar_paso(db, enlace, modulo, body.datos, _ip(request))
+    _log(db, request, enlace.id, 'exitoso', f'Paso {modulo}' + (f' desde {_ip(request)}' if modulo == 'ubicacion' else ''))
     db.commit()
     return _sesion(db, enlace)
