@@ -56,6 +56,7 @@ const NAV_ITEMS: NavItem[] = [
     { href: '/users/roles', label: 'Roles y permisos', permission: 'roles:read' },
     { href: '/configuracion/tipos-equipo', label: 'Tipos de equipo', permission: 'equipment_types:write' },
     { href: '/configuracion/redes-wifi', label: 'Redes WiFi', permission: 'wifi:write' },
+    { href: '/admin/enlaces', label: 'Enlaces y QR', permission: 'enlaces:write' },
     { href: '/admin/integraciones', label: 'Integraciones', permission: 'roles:write' },
   ]},
 ];

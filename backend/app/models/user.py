@@ -58,6 +58,8 @@ class User(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     last_login_at = Column(DateTime, nullable=True)
+    # Persona (Empleado) a la que pertenece esta cuenta; permite tramitar por cédula
+    empleado_id = Column(Integer, ForeignKey('empleados.id', ondelete='SET NULL'), nullable=True)
 
     roles: Mapped[list[Role]] = relationship(
         'Role',

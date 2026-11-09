@@ -15,6 +15,7 @@ from app.models.baja_equipo import BajaEquipo, BajaEquipoFoto  # noqa: F401
 from app.models.bodega import Bodega  # noqa: F401
 from app.models.credencial import Credencial  # noqa: F401
 from app.models.empleado import Empleado  # noqa: F401
+from app.models.enlace_acceso import EnlaceAcceso  # noqa: F401
 from app.models.empleado_agenda import EmpleadoAgenda  # noqa: F401
 from app.models.equipment import Equipment  # noqa: F401
 from app.models.equipment_documento import EquipmentDocumento  # noqa: F401
@@ -38,7 +39,9 @@ from app.routers.asignaciones import router as asignaciones_router
 from app.routers.auth import router as auth_router
 from app.routers.bajas import router as bajas_router
 from app.routers.bodegas import router as bodegas_router
+from app.routers.acceso_publico import router as acceso_publico_router
 from app.routers.credenciales import router as credenciales_router
+from app.routers.enlaces_acceso import router as enlaces_acceso_router
 from app.routers.jornada import router as jornada_router
 from app.routers.portal import router as portal_router
 from app.routers.redes_wifi import router as redes_wifi_router
@@ -352,6 +355,10 @@ def _run_migrations() -> None:
 
         # Registro sanitario (INVIMA) — solo aplica a equipos biomédicos
         conn.execute(text('ALTER TABLE equipment ADD COLUMN IF NOT EXISTS registro_sanitario VARCHAR(80)'))
+        # Enlaces/QR de acceso — cuenta de login ligada a su Empleado (por cédula)
+        conn.execute(text(
+            'ALTER TABLE users ADD COLUMN IF NOT EXISTS empleado_id INTEGER REFERENCES empleados(id) ON DELETE SET NULL'
+        ))
         conn.commit()
 
 
@@ -388,6 +395,8 @@ app.include_router(credenciales_router)
 app.include_router(jornada_router)
 app.include_router(integraciones_router)
 app.include_router(portal_router)
+app.include_router(enlaces_acceso_router)
+app.include_router(acceso_publico_router)
 app.include_router(redes_wifi_router)
 app.include_router(tickets_router)
 
@@ -438,6 +447,7 @@ def seed_data():
             ('wifi:write', 'Gestionar redes WiFi', 'Permite crear, editar y eliminar redes WiFi'),
             ('jornada:admin', 'Administrar Ubicaciones', 'Permite crear, editar y eliminar sedes del control de asistencia'),
             ('jornada:read', 'Ver asistencia', 'Permite consultar registros de jornada del personal'),
+            ('enlaces:write', 'Generar enlaces/QR de acceso', 'Permite generar enlaces o QR de un solo uso para que una persona se registre, cambie su contraseña, actualice sus datos o registre su ubicación Home Office'),
             ('integraciones:write', 'Ejecutar integraciones', 'Permite sincronizar datos desde sistemas externos'),
         ]
 

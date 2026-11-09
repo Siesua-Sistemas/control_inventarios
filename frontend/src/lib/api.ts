@@ -2259,3 +2259,54 @@ export async function uploadBajaFoto(bajaId: number, file: File): Promise<BajaFo
 export async function deleteBajaFoto(bajaId: number, fotoId: number): Promise<void> {
   await apiRequest<void>(`/api/v1/bajas/${bajaId}/fotos/${fotoId}`, { method: 'DELETE' });
 }
+
+// ── Enlaces / QR de acceso (RF-01) ───────────────────────────────────────────
+
+export type ModuloAcceso = 'nuevo' | 'password' | 'datos' | 'ubicacion';
+
+export interface CedulaInfo {
+  existe: boolean; activo: boolean; nombre: string | null;
+  tiene_cuenta: boolean; tiene_home_office: boolean;
+}
+export interface EnlaceAcceso {
+  id: number; cedula: string; nombre: string | null; modulos: ModuloAcceso[];
+  pasos_completados: ModuloAcceso[]; estado: 'activo' | 'usado' | 'expirado' | 'revocado' | 'bloqueado';
+  expires_at: string; created_at: string;
+}
+export interface EnlaceAccesoCreado extends EnlaceAcceso { token: string; ruta: string }
+
+export const consultarCedulaEnlace = (cedula: string) =>
+  apiRequest<CedulaInfo>(`/api/v1/enlaces-acceso/cedula/${encodeURIComponent(cedula)}`);
+export const crearEnlaceAcceso = (cedula: string, modulos: ModuloAcceso[], horas_vigencia: number) =>
+  apiRequest<EnlaceAccesoCreado>('/api/v1/enlaces-acceso', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ cedula, modulos, horas_vigencia }),
+  });
+export const listarEnlacesAcceso = () => apiRequest<EnlaceAcceso[]>('/api/v1/enlaces-acceso');
+export const revocarEnlaceAcceso = (id: number) =>
+  apiRequest<void>(`/api/v1/enlaces-acceso/${id}`, { method: 'DELETE' });
+
+export interface AccesoModulo { codigo: ModuloAcceso; titulo: string }
+export interface AccesoSesion {
+  nombre: string | null; modulos: AccesoModulo[]; completados: ModuloAcceso[];
+  terminado: boolean; prefill: Record<string, string | number>;
+}
+
+async function accesoPublico<T>(path: string, body?: unknown): Promise<T> {
+  const r = await fetch(`${API_BASE}/api/v1/acceso/${path}`, {
+    method: body === undefined ? 'GET' : 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  if (!r.ok) {
+    const err: ApiError = await r.json().catch(() => ({}));
+    throw new Error(err.detail ?? 'Error en la solicitud');
+  }
+  return r.json();
+}
+export const infoAcceso = (token: string) =>
+  accesoPublico<{ modulos: AccesoModulo[]; expires_at: string }>(encodeURIComponent(token));
+export const verificarAcceso = (token: string, cedula: string) =>
+  accesoPublico<AccesoSesion>(`${encodeURIComponent(token)}/verificar`, { cedula });
+export const completarPasoAcceso = (token: string, modulo: ModuloAcceso, cedula: string, datos: Record<string, unknown>) =>
+  accesoPublico<AccesoSesion>(`${encodeURIComponent(token)}/pasos/${modulo}`, { cedula, datos });
