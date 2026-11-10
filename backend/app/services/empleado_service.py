@@ -51,13 +51,8 @@ class EmpleadoService:
         limit: int | None = None,
         include_inactive: bool = False,
     ) -> tuple[list[EmpleadoOut], int]:
-        from app.services.acceso_service import empleados_con_cuenta
         items, total = self.repository.list_empleados(search, sede, skip, limit, include_inactive)
-        con_cuenta = empleados_con_cuenta(self.repository.db, list(items))
-        out = [_to_out(e) for e in items]
-        for o in out:
-            o.tiene_cuenta = o.id in con_cuenta
-        return out, total
+        return [_to_out(e) for e in items], total
 
     def get_empleado(self, empleado_id: int, include_inactive: bool = False) -> Empleado:
         emp = self.repository.get_by_id(empleado_id, include_inactive)

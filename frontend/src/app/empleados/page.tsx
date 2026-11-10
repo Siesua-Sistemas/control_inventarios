@@ -382,18 +382,6 @@ export default function EmpleadosPage() {
                             >
                               Editar
                             </Link>
-                            {hasPermission('users:write') && (
-                              emp.tiene_cuenta ? (
-                                <span className="rounded-md px-2 py-1 text-xs text-emerald-700 dark:text-emerald-400" title="Ya tiene usuario de acceso">Con acceso</span>
-                              ) : (
-                                <Link
-                                  href={`/users/new?empleado_id=${emp.id}`}
-                                  className="rounded-md bg-cyan-100 px-3 py-1 text-xs text-cyan-800 hover:bg-cyan-200 dark:bg-cyan-500/10 dark:text-cyan-300 dark:hover:bg-cyan-500/20"
-                                >
-                                  Crear acceso
-                                </Link>
-                              )
-                            )}
                             <button
                               onClick={() => setModalRetiro(emp)}
                               className="rounded-md bg-red-100 px-3 py-1 text-xs text-red-700 hover:bg-red-200 dark:bg-red-500/10 dark:text-red-400 dark:hover:bg-red-500/20"

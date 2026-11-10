@@ -294,16 +294,3 @@ def ejecutar_paso(db: Session, enlace: EnlaceAcceso, modulo: str, datos: dict, i
     enlace.pasos_completados = hechos
     if len(hechos) == len(enlace.modulos):
         enlace.used_at = datetime.utcnow()
-
-
-def empleados_con_cuenta(db: Session, empleados: list[Empleado]) -> set[int]:
-    """IDs de empleados que ya tienen cuenta de login (vínculo explícito o correo coincidente)."""
-    if not empleados:
-        return set()
-    ids = {e.id for e in empleados}
-    vinculados = set(db.scalars(select(User.empleado_id).where(User.empleado_id.in_(ids))).all())
-    correos = {e.email.strip().lower(): e.id for e in empleados if e.email and e.id not in vinculados}
-    if correos:
-        for email in db.scalars(select(func.lower(User.email)).where(func.lower(User.email).in_(list(correos)))):
-            vinculados.add(correos[email])
-    return vinculados
