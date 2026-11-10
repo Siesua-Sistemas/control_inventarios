@@ -44,12 +44,13 @@ class EmpleadoOut(BaseModel):
     nombre_completo: str
     is_active: bool
     created_at: datetime
+    tiene_cuenta: bool = False
 
     model_config = {'from_attributes': True}
 
     @classmethod
     def from_orm_with_full_name(cls, obj: object) -> 'EmpleadoOut':
-        data = {c: getattr(obj, c) for c in cls.model_fields if c not in ('nombre_completo', 'sedes_jornada_ids')}
+        data = {c: getattr(obj, c) for c in cls.model_fields if c not in ('nombre_completo', 'sedes_jornada_ids', 'tiene_cuenta')}
         data['nombre_completo'] = f"{obj.nombres} {obj.apellidos}"  # type: ignore[union-attr]
         data['sedes_jornada_ids'] = [s.id for s in (getattr(obj, 'sedes_jornada', None) or [])]
         return cls(**data)

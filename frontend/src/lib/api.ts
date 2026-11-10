@@ -337,6 +337,7 @@ export interface EmpleadoRow {
   nombre_completo: string;
   is_active: boolean;
   created_at: string;
+  tiene_cuenta?: boolean;
 }
 
 export interface EmpleadoFilters {

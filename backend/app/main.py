@@ -43,6 +43,7 @@ from app.routers.acceso_publico import router as acceso_publico_router
 from app.routers.credenciales import router as credenciales_router
 from app.routers.enlaces_acceso import router as enlaces_acceso_router
 from app.routers.jornada import router as jornada_router
+from app.routers.personas import router as personas_router
 from app.routers.portal import router as portal_router
 from app.routers.redes_wifi import router as redes_wifi_router
 from app.routers.integraciones import router as integraciones_router
@@ -396,6 +397,7 @@ app.include_router(jornada_router)
 app.include_router(integraciones_router)
 app.include_router(portal_router)
 app.include_router(enlaces_acceso_router)
+app.include_router(personas_router)
 app.include_router(acceso_publico_router)
 app.include_router(redes_wifi_router)
 app.include_router(tickets_router)
