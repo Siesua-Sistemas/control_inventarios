@@ -18,7 +18,9 @@ from app.security import get_password_hash
 
 # Orden canónico: así se presentan los pasos del asistente cuando hay varios.
 MODULOS: dict[str, str] = {
-    'nuevo': 'Registro de usuario nuevo',
+    'nuevo': 'Registro de usuario nuevo (empleado + cuenta de acceso)',
+    'nuevo_empleado': 'Registro de empleado (sin cuenta de acceso)',
+    'cuenta': 'Creación de usuario de acceso',
     'password': 'Cambio de contraseña',
     'datos': 'Actualización de datos generales',
     'ubicacion': 'Ubicación de trabajo (Home Office)',
@@ -68,18 +70,24 @@ def validar_emision(db: Session, cedula: str, modulos: list[str]) -> tuple[Emple
     empleado = buscar_empleado(db, cedula)
     if empleado is None:
         # Cédula nueva: solo se puede registrar la persona (y, opcionalmente, su ubicación).
-        extra = [m for m in ordenados if m not in ('nuevo', 'ubicacion')]
-        if 'nuevo' not in ordenados or extra:
+        altas = [m for m in ordenados if m in ('nuevo', 'nuevo_empleado')]
+        extra = [m for m in ordenados if m not in ('nuevo', 'nuevo_empleado', 'ubicacion')]
+        if len(altas) != 1 or extra:
             raise HTTPException(
                 status.HTTP_400_BAD_REQUEST,
-                'La cédula no existe: debe incluir "Registro de usuario nuevo" y solo puede combinarse con la ubicación Home Office',
+                'La cédula no existe: elige un tipo de alta (empleado + cuenta, o solo empleado); solo puede combinarse con la ubicación Home Office',
             )
         return None, ordenados
 
-    if 'nuevo' in ordenados:
+    if 'nuevo' in ordenados or 'nuevo_empleado' in ordenados:
         raise HTTPException(status.HTTP_409_CONFLICT, 'La cédula ya está registrada; no se puede crear de nuevo')
     if not empleado.is_active:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, 'El empleado está inactivo')
+    if 'cuenta' in ordenados:
+        if buscar_cuenta(db, empleado) is not None:
+            raise HTTPException(status.HTTP_409_CONFLICT, 'Esa persona ya tiene una cuenta de acceso')
+        if 'password' in ordenados:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, 'Al crear la cuenta ya se define la contraseña; quita "Cambio de contraseña"')
     if 'password' in ordenados and buscar_cuenta(db, empleado) is None:
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
@@ -172,6 +180,19 @@ class NuevoIn(_Base):
     password: str = Field(min_length=MIN_PASSWORD, max_length=128)
 
 
+class NuevoEmpleadoIn(_Base):
+    nombres: str = Field(min_length=2, max_length=120)
+    apellidos: str = Field(min_length=2, max_length=120)
+    email: EmailStr | None = None
+    telefono: str | None = Field(default=None, max_length=20)
+    cargo: str | None = Field(default=None, max_length=100)
+
+
+class CuentaIn(_Base):
+    email: EmailStr
+    password: str = Field(min_length=MIN_PASSWORD, max_length=128)
+
+
 class PasswordIn(_Base):
     password: str = Field(min_length=MIN_PASSWORD, max_length=128)
 
@@ -225,6 +246,36 @@ def _paso_nuevo(db: Session, enlace: EnlaceAcceso, datos: dict, ip: str | None) 
     enlace.empleado_id = empleado.id
 
 
+def _paso_nuevo_empleado(db: Session, enlace: EnlaceAcceso, datos: dict, ip: str | None) -> None:
+    d = _parse(NuevoEmpleadoIn, datos)
+    if buscar_empleado(db, enlace.cedula) is not None:
+        raise HTTPException(status.HTTP_409_CONFLICT, 'La cédula ya está registrada')
+    empleado = Empleado(
+        nombres=d.nombres.strip(), apellidos=d.apellidos.strip(), cedula=enlace.cedula,
+        cargo=d.cargo, email=d.email.strip().lower() if d.email else None, telefono=d.telefono,
+    )
+    db.add(empleado)
+    db.flush()
+    enlace.empleado_id = empleado.id
+
+
+def _paso_cuenta(db: Session, enlace: EnlaceAcceso, datos: dict, ip: str | None) -> None:
+    d = _parse(CuentaIn, datos)
+    empleado = _empleado_del_enlace(db, enlace)
+    if buscar_cuenta(db, empleado) is not None:
+        raise HTTPException(status.HTTP_409_CONFLICT, 'Esa persona ya tiene una cuenta de acceso')
+    email = d.email.strip().lower()
+    if db.scalar(select(User).where(func.lower(User.email) == email)):
+        raise HTTPException(status.HTTP_409_CONFLICT, 'Ese correo ya está en uso')
+    # Sin roles e inactiva: un administrador debe activarla y asignarle permisos.
+    db.add(User(
+        email=email, full_name=f'{empleado.nombres} {empleado.apellidos}',
+        password_hash=get_password_hash(d.password), is_active=False, empleado_id=empleado.id,
+    ))
+    if not empleado.email:
+        empleado.email = email
+
+
 def _paso_password(db: Session, enlace: EnlaceAcceso, datos: dict, ip: str | None) -> None:
     d = _parse(PasswordIn, datos)
     empleado = _empleado_del_enlace(db, enlace)
@@ -270,6 +321,8 @@ def _paso_ubicacion(db: Session, enlace: EnlaceAcceso, datos: dict, ip: str | No
 
 _PASOS = {
     'nuevo': _paso_nuevo,
+    'nuevo_empleado': _paso_nuevo_empleado,
+    'cuenta': _paso_cuenta,
     'password': _paso_password,
     'datos': _paso_datos,
     'ubicacion': _paso_ubicacion,

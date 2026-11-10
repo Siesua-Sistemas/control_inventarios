@@ -49,11 +49,13 @@ export default function AccesoPage() {
     e.preventDefault();
     if (!pendiente) return;
     setError('');
-    if ((pendiente === 'password' || pendiente === 'nuevo') && f.password !== f.password2) {
+    if ((pendiente === 'password' || pendiente === 'nuevo' || pendiente === 'cuenta') && f.password !== f.password2) {
       setError('Las contraseñas no coinciden'); return;
     }
     const datos: Record<string, unknown> =
       pendiente === 'nuevo' ? { nombres: f.nombres, apellidos: f.apellidos, email: f.email, telefono: f.telefono || null, cargo: f.cargo || null, password: f.password }
+      : pendiente === 'nuevo_empleado' ? { nombres: f.nombres, apellidos: f.apellidos, email: f.email || null, telefono: f.telefono || null, cargo: f.cargo || null }
+      : pendiente === 'cuenta' ? { email: f.email, password: f.password }
       : pendiente === 'password' ? { password: f.password }
       : pendiente === 'datos' ? { email: f.email, telefono: f.telefono || null }
       : { direccion: f.direccion, ciudad: f.ciudad, latitud: Number(f.latitud), longitud: Number(f.longitud) };
@@ -105,7 +107,7 @@ export default function AccesoPage() {
           <div className="text-center">
             <h1 className="text-xl font-bold">¡Listo{sesion.nombre ? `, ${sesion.nombre}` : ''}!</h1>
             <p className="mt-2 text-slate-600 dark:text-slate-400">Completaste todos los trámites. Este enlace ya no puede usarse de nuevo.</p>
-            {sesion.modulos.some((m) => m.codigo === 'nuevo') && (
+            {sesion.modulos.some((m) => m.codigo === 'nuevo' || m.codigo === 'cuenta') && (
               <p className="mt-2 text-sm text-slate-500">Tu cuenta quedará activa cuando un administrador la apruebe.</p>
             )}
           </div>
@@ -114,10 +116,10 @@ export default function AccesoPage() {
             {sesion.modulos.length > 1 && <p className="text-xs uppercase tracking-widest text-cyan-700 dark:text-cyan-300">Paso {paso} de {sesion.modulos.length}</p>}
             <h1 className="text-xl font-bold">{sesion.modulos.find((m) => m.codigo === pendiente)?.titulo}</h1>
 
-            {pendiente === 'nuevo' && (<>
+            {(pendiente === 'nuevo' || pendiente === 'nuevo_empleado') && (<>
               <Campo label="Nombres"><input className={inputCls} value={f.nombres ?? ''} onChange={set('nombres')} required minLength={2} /></Campo>
               <Campo label="Apellidos"><input className={inputCls} value={f.apellidos ?? ''} onChange={set('apellidos')} required minLength={2} /></Campo>
-              <Campo label="Correo"><input type="email" className={inputCls} value={f.email ?? ''} onChange={set('email')} required /></Campo>
+              <Campo label={pendiente === 'nuevo' ? 'Correo' : 'Correo (opcional)'}><input type="email" className={inputCls} value={f.email ?? ''} onChange={set('email')} required={pendiente === 'nuevo'} /></Campo>
               <Campo label="Teléfono"><input className={inputCls} value={f.telefono ?? ''} onChange={set('telefono')} /></Campo>
               <Campo label="Cargo"><input className={inputCls} value={f.cargo ?? ''} onChange={set('cargo')} /></Campo>
             </>)}
@@ -125,7 +127,10 @@ export default function AccesoPage() {
               <Campo label="Correo"><input type="email" className={inputCls} value={f.email ?? ''} onChange={set('email')} required /></Campo>
               <Campo label="Teléfono"><input className={inputCls} value={f.telefono ?? ''} onChange={set('telefono')} /></Campo>
             </>)}
-            {(pendiente === 'nuevo' || pendiente === 'password') && (<>
+            {pendiente === 'cuenta' && (
+              <Campo label="Correo (será tu usuario de ingreso)"><input type="email" className={inputCls} value={f.email ?? ''} onChange={set('email')} required /></Campo>
+            )}
+            {(pendiente === 'nuevo' || pendiente === 'password' || pendiente === 'cuenta') && (<>
               <Campo label="Contraseña (mínimo 8 caracteres)"><input type="password" className={inputCls} value={f.password ?? ''} onChange={set('password')} required minLength={8} autoComplete="new-password" /></Campo>
               <Campo label="Confirmar contraseña"><input type="password" className={inputCls} value={f.password2 ?? ''} onChange={set('password2')} required autoComplete="new-password" /></Campo>
             </>)}

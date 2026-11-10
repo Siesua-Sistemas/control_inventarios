@@ -11,7 +11,9 @@ import {
 } from '@/lib/api';
 
 const MODULOS: { codigo: ModuloAcceso; titulo: string; desc: string }[] = [
-  { codigo: 'nuevo', titulo: 'Creación de usuario nuevo', desc: 'Datos maestros y credenciales (cédula no registrada)' },
+  { codigo: 'nuevo', titulo: 'Alta nueva: empleado + usuario de acceso', desc: 'Cédula no registrada: datos de la persona y su cuenta (correo y contraseña)' },
+  { codigo: 'nuevo_empleado', titulo: 'Alta nueva: solo empleado', desc: 'Cédula no registrada: solo la ficha del empleado, sin cuenta de ingreso' },
+  { codigo: 'cuenta', titulo: 'Crear usuario de acceso', desc: 'Empleado ya registrado sin cuenta: define su correo y contraseña' },
   { codigo: 'password', titulo: 'Cambio / restablecimiento de contraseña', desc: 'Definir una nueva clave' },
   { codigo: 'datos', titulo: 'Actualización de datos generales', desc: 'Correo y teléfono de contacto' },
   { codigo: 'ubicacion', titulo: 'Ubicación Home Office', desc: 'Dirección, ciudad y coordenadas del puesto remoto' },
@@ -59,19 +61,33 @@ export default function EnlacesPage() {
     const t = setTimeout(() => {
       consultarCedulaEnlace(c).then((i) => {
         setInfo(i);
-        setModulos(i.existe ? (m) => m.filter((x) => x !== 'nuevo') : ['nuevo']);
+        const altas: ModuloAcceso[] = ['nuevo', 'nuevo_empleado'];
+        setModulos(i.existe
+          ? (m) => m.filter((x) => !altas.includes(x))
+          : (m) => (m.some((x) => altas.includes(x)) ? m : ['nuevo', ...m.filter((x) => x === 'ubicacion')]));
       }).catch(() => {});
     }, 400);
     return () => clearTimeout(t);
   }, [cedula]);
 
+  // Las dos altas son excluyentes entre sí; "crear usuario" y "cambiar contraseña" también.
+  const EXCLUYE: Partial<Record<ModuloAcceso, ModuloAcceso>> = {
+    nuevo: 'nuevo_empleado', nuevo_empleado: 'nuevo', cuenta: 'password', password: 'cuenta',
+  };
   const toggle = (m: ModuloAcceso) =>
-    setModulos((cur) => (cur.includes(m) ? cur.filter((x) => x !== m) : [...cur, m]));
+    setModulos((cur) => {
+      if (cur.includes(m)) return cur.filter((x) => x !== m);
+      return [...cur.filter((x) => x !== EXCLUYE[m]), m];
+    });
 
   const bloqueado = (m: ModuloAcceso) => {
     if (!info) return true;
-    if (info.existe) return m === 'nuevo' || (m === 'password' && !info.tiene_cuenta);
-    return m === 'password' || m === 'datos';
+    if (info.existe) {
+      if (m === 'nuevo' || m === 'nuevo_empleado') return true;
+      if (m === 'cuenta') return info.tiene_cuenta;
+      return m === 'password' && !info.tiene_cuenta;
+    }
+    return !['nuevo', 'nuevo_empleado', 'ubicacion'].includes(m);
   };
 
   const generar = async () => {
@@ -119,8 +135,8 @@ export default function EnlacesPage() {
               {info && (
                 <p className={`mt-1 text-sm ${info.existe && !info.activo ? 'text-red-600' : 'text-slate-600 dark:text-slate-400'}`}>
                   {info.existe
-                    ? `${info.nombre} — ${info.activo ? 'usuario existente' : 'empleado inactivo'}${info.activo && !info.tiene_cuenta ? ' (sin cuenta de acceso)' : ''}`
-                    : 'Cédula no registrada: se creará como usuario nuevo.'}
+                    ? `${info.nombre} — ${info.activo ? 'empleado registrado' : 'empleado inactivo'}${info.activo ? (info.tiene_cuenta ? ' · ya tiene cuenta de acceso' : ' · sin cuenta de acceso: puedes crearle una') : ''}`
+                    : 'Cédula no registrada: elige el tipo de alta (empleado + usuario, o solo empleado).'}
                 </p>
               )}
             </div>
@@ -184,7 +200,7 @@ export default function EnlacesPage() {
                   <tr key={e.id} className="border-t border-slate-200 dark:border-slate-800">
                     <td className="p-3">{e.cedula}</td>
                     <td className="p-3">{e.nombre ?? '—'}</td>
-                    <td className="p-3">{e.modulos.map((m) => `${e.pasos_completados.includes(m) ? '✓ ' : ''}${MODULOS.find((x) => x.codigo === m)?.titulo.split(' ')[0]}`).join(', ')}</td>
+                    <td className="p-3">{e.modulos.map((m) => `${e.pasos_completados.includes(m) ? '✓ ' : ''}${MODULOS.find((x) => x.codigo === m)?.titulo.replace('Alta nueva: ', '').split(' ').slice(0, 2).join(' ')}`).join(', ')}</td>
                     <td className="p-3"><span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${ESTADO_BADGE[e.estado]}`}>{e.estado}</span></td>
                     <td className="p-3">{fmt(e.expires_at)}</td>
                     <td className="p-3 text-right">{e.estado === 'activo' && <button onClick={() => revocar(e.id)} className="text-red-600 hover:underline">Revocar</button>}</td>

@@ -2262,7 +2262,7 @@ export async function deleteBajaFoto(bajaId: number, fotoId: number): Promise<vo
 
 // ── Enlaces / QR de acceso (RF-01) ───────────────────────────────────────────
 
-export type ModuloAcceso = 'nuevo' | 'password' | 'datos' | 'ubicacion';
+export type ModuloAcceso = 'nuevo' | 'nuevo_empleado' | 'cuenta' | 'password' | 'datos' | 'ubicacion';
 
 export interface CedulaInfo {
   existe: boolean; activo: boolean; nombre: string | null;
